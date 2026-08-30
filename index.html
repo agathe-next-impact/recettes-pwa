@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Carnet de recettes</title>
+<meta name="description" content="Enregistrez et retrouvez vos recettes de cuisine, même hors ligne.">
+<meta name="theme-color" content="#22303A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --encre:#22303A;
+  --encre-70:#4A5A64;
+  --papier:#FBFAF7;
+  --carte:#FFFFFF;
+  --safran:#D98E04;
+  --safran-fonce:#B37503;
+  --feuille:#4C7A5D;
+  --tomate:#C2452D;
+  --ligne:#E4E0D6;
+  --rayon:10px;
+  --ombre:0 1px 2px rgba(34,48,58,.06), 0 6px 18px rgba(34,48,58,.07);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Karla',system-ui,sans-serif;
+  background:var(--papier);
+  color:var(--encre);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:'Fraunces',Georgia,serif;font-weight:650;margin:0}
+button{font-family:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit;font-size:1rem;color:var(--encre)}
+a{color:var(--safran-fonce)}
+:focus-visible{outline:3px solid var(--safran);outline-offset:2px;border-radius:4px}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- Écran d'authentification ---------- */
+#vue-auth{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:var(--encre);padding:24px;
+}
+.carte-auth{
+  background:var(--papier);border-radius:14px;box-shadow:var(--ombre);
+  width:100%;max-width:400px;padding:32px 28px;
+}
+.carte-auth .marque{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.carte-auth .marque img{width:44px;height:44px;border-radius:10px}
+.carte-auth h1{font-size:1.5rem}
+.carte-auth p.sous-titre{color:var(--encre-70);margin:4px 0 22px;font-size:.95rem}
+.onglets{display:flex;gap:6px;border-bottom:1px solid var(--ligne);margin-bottom:20px}
+.onglets button{
+  background:none;border:none;padding:10px 14px;font-size:1rem;font-weight:700;
+  color:var(--encre-70);border-bottom:3px solid transparent;margin-bottom:-1px;
+}
+.onglets button[aria-selected="true"]{color:var(--encre);border-bottom-color:var(--safran)}
+.champ{margin-bottom:16px}
+.champ label{display:block;font-weight:700;font-size:.85rem;letter-spacing:.02em;margin-bottom:6px}
+.champ input,.champ textarea,.champ select{
+  width:100%;padding:11px 12px;border:1px solid var(--ligne);border-radius:8px;
+  background:var(--carte);
+}
+.champ textarea{resize:vertical;min-height:110px;line-height:1.5}
+.champ .aide{font-size:.82rem;color:var(--encre-70);margin-top:5px}
+.bouton{
+  display:inline-flex;align-items:center;gap:8px;justify-content:center;
+  border:none;border-radius:999px;padding:12px 22px;font-size:1rem;font-weight:700;
+  background:var(--safran);color:#fff;transition:background .15s;
+}
+.bouton:hover{background:var(--safran-fonce)}
+.bouton.secondaire{background:transparent;color:var(--encre);border:1.5px solid var(--encre)}
+.bouton.secondaire:hover{background:rgba(34,48,58,.06)}
+.bouton.danger{background:var(--tomate)}
+.bouton.pleine-largeur{width:100%}
+.message-erreur{color:var(--tomate);font-size:.9rem;margin:10px 0 0;min-height:1.2em}
+.note-securite{margin-top:20px;padding:12px;border-radius:8px;background:#F3EFE4;font-size:.82rem;color:var(--encre-70);line-height:1.45}
+
+/* ---------- Application ---------- */
+#vue-app{display:none;min-height:100vh}
+header.appli{
+  background:var(--encre);color:var(--papier);
+  padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  position:sticky;top:0;z-index:20;
+}
+header.appli img{width:34px;height:34px;border-radius:8px}
+header.appli h1{font-size:1.25rem;color:var(--papier)}
+.badge-reseau{
+  margin-left:auto;display:inline-flex;align-items:center;gap:7px;
+  font-size:.82rem;font-weight:700;padding:5px 12px;border-radius:999px;
+  background:rgba(255,255,255,.1);
+}
+.badge-reseau .point{width:9px;height:9px;border-radius:50%;background:var(--feuille)}
+.badge-reseau.hors-ligne .point{background:var(--tomate)}
+.menu-utilisateur{display:flex;align-items:center;gap:10px;font-size:.9rem}
+.menu-utilisateur button{
+  background:none;border:1px solid rgba(255,255,255,.35);color:var(--papier);
+  border-radius:999px;padding:5px 14px;font-size:.85rem;font-weight:700;
+}
+.menu-utilisateur button:hover{background:rgba(255,255,255,.12)}
+
+.barre-outils{
+  max-width:1080px;margin:0 auto;padding:22px 20px 6px;
+  display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+}
+.barre-outils input[type="search"]{
+  flex:1;min-width:220px;padding:11px 14px;border:1px solid var(--ligne);
+  border-radius:999px;background:var(--carte);
+}
+.filtres-tags{max-width:1080px;margin:0 auto;padding:8px 20px 0;display:flex;gap:8px;flex-wrap:wrap}
+.puce{
+  border:1px solid var(--ligne);background:var(--carte);border-radius:999px;
+  padding:5px 13px;font-size:.85rem;font-weight:700;color:var(--encre-70);
+}
+.puce[aria-pressed="true"]{background:var(--encre);color:var(--papier);border-color:var(--encre)}
+
+main.grille{
+  max-width:1080px;margin:0 auto;padding:18px 20px 90px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;
+}
+/* Fiche façon carte de recette : languette colorée */
+.fiche{
+  background:var(--carte);border:1px solid var(--ligne);border-radius:var(--rayon);
+  box-shadow:var(--ombre);padding:0;overflow:visible;position:relative;
+  display:flex;flex-direction:column;text-align:left;transition:transform .12s;
+}
+.fiche:hover{transform:translateY(-2px)}
+.fiche .languette{
+  position:absolute;top:-9px;left:16px;background:var(--safran);color:#fff;
+  font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 10px;border-radius:5px 5px 0 0;
+}
+.fiche .corps{padding:20px 18px 14px;flex:1;border:none;background:none;text-align:left;width:100%;cursor:pointer;border-radius:var(--rayon) var(--rayon) 0 0}
+.fiche h3{font-size:1.12rem;line-height:1.3;margin-bottom:6px}
+.fiche .meta{font-size:.83rem;color:var(--encre-70);display:flex;gap:12px;flex-wrap:wrap}
+.fiche .pied{
+  border-top:1px dashed var(--ligne);padding:9px 14px;display:flex;gap:8px;justify-content:flex-end;
+}
+.fiche .pied button{
+  background:none;border:none;font-size:.85rem;font-weight:700;color:var(--encre-70);
+  padding:4px 8px;border-radius:6px;
+}
+.fiche .pied button:hover{background:var(--papier);color:var(--encre)}
+.fiche .pied button.suppr:hover{color:var(--tomate)}
+
+.etat-vide{
+  grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--encre-70);
+}
+.etat-vide h2{font-size:1.3rem;margin-bottom:8px;color:var(--encre)}
+
+.fab{
+  position:fixed;right:22px;bottom:22px;z-index:30;
+  box-shadow:0 8px 24px rgba(34,48,58,.28);font-size:1.05rem;padding:14px 24px;
+}
+
+/* ---------- Dialogues ---------- */
+dialog{
+  border:none;border-radius:14px;box-shadow:0 20px 60px rgba(34,48,58,.35);
+  width:min(680px,calc(100vw - 32px));max-height:calc(100vh - 48px);
+  padding:0;background:var(--papier);
+}
+dialog::backdrop{background:rgba(34,48,58,.55)}
+.dialogue-entete{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:22px 24px 12px;
+}
+.dialogue-entete h2{font-size:1.4rem;line-height:1.25}
+.fermer{background:none;border:none;font-size:1.5rem;line-height:1;color:var(--encre-70);padding:4px 8px;border-radius:6px}
+.fermer:hover{background:rgba(34,48,58,.07)}
+.dialogue-corps{padding:6px 24px 24px}
+.grille-2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media (max-width:540px){.grille-2{grid-template-columns:1fr}}
+.actions-dialogue{display:flex;gap:10px;justify-content:flex-end;padding:0 24px 22px;flex-wrap:wrap}
+
+/* Détail recette */
+.detail-meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--encre-70);font-size:.9rem;margin:2px 0 14px}
+.detail-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.detail-tags span{background:#F3EFE4;border-radius:999px;padding:3px 11px;font-size:.8rem;font-weight:700;color:var(--encre-70)}
+.detail-section{margin-bottom:18px}
+.detail-section h3{font-size:1.05rem;margin-bottom:8px;padding-bottom:5px;border-bottom:1px dashed var(--ligne)}
+.detail-section ul,.detail-section ol{margin:0;padding-left:22px;line-height:1.65}
+.detail-section p{margin:0;line-height:1.6;white-space:pre-wrap}
+
+/* Toast */
+#toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+  background:var(--encre);color:var(--papier);padding:11px 20px;border-radius:999px;
+  font-weight:700;font-size:.92rem;opacity:0;pointer-events:none;transition:all .25s;z-index:50;
+}
+#toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== AUTHENTIFICATION ==================== -->
+<div id="vue-auth">
+  <div class="carte-auth">
+    <div class="marque">
+      <img src="icons/icon-192.png" alt="">
+      <h1>Carnet de recettes</h1>
+    </div>
+    <p class="sous-titre">Vos recettes du web, disponibles même hors ligne.</p>
+
+    <div class="onglets" role="tablist">
+      <button role="tab" id="onglet-connexion" aria-selected="true" onclick="basculerOnglet('connexion')">Se connecter</button>
+      <button role="tab" id="onglet-inscription" aria-selected="false" onclick="basculerOnglet('inscription')">Créer un compte</button>
+    </div>
+
+    <form id="form-auth">
+      <div class="champ">
+        <label for="auth-utilisateur">Nom d'utilisateur</label>
+        <input id="auth-utilisateur" autocomplete="username" required minlength="2" maxlength="40">
+      </div>
+      <div class="champ">
+        <label for="auth-mdp">Mot de passe</label>
+        <input id="auth-mdp" type="password" autocomplete="current-password" required minlength="8">
+        <p class="aide" id="aide-mdp" hidden>8 caractères minimum.</p>
+      </div>
+      <button type="submit" class="bouton pleine-largeur" id="btn-auth">Se connecter</button>
+      <p class="message-erreur" id="erreur-auth" role="alert"></p>
+    </form>
+
+    <div class="note-securite">
+      <strong>Confidentialité :</strong> vos données restent sur cet appareil (IndexedDB).
+      Le mot de passe est haché localement (PBKDF2) et n'est jamais transmis. Ce mode
+      « local d'abord » protège l'accès sur un appareil partagé, mais n'équivaut pas à
+      une authentification serveur.
+    </div>
+  </div>
+</div>
+
+<!-- ==================== APPLICATION ==================== -->
+<div id="vue-app">
+  <header class="appli">
+    <img src="icons/icon-192.png" alt="">
+    <h1>Carnet de recettes</h1>
+    <span class="badge-reseau" id="badge-reseau"><span class="point"></span><span id="texte-reseau">En ligne</span></span>
+    <div class="menu-utilisateur">
+      <span id="nom-utilisateur"></span>
+      <button onclick="exporterJSON()">Exporter</button>
+      <button onclick="document.getElementById('import-fichier').click()">Importer</button>
+      <input type="file" id="import-fichier" accept="application/json" hidden>
+      <button onclick="deconnexion()">Se déconnecter</button>
+    </div>
+  </header>
+
+  <div class="barre-outils">
+    <input type="search" id="recherche" placeholder="Rechercher un titre, un ingrédient, un tag…" aria-label="Rechercher une recette">
+  </div>
+  <div class="filtres-tags" id="filtres-tags" role="group" aria-label="Filtrer par tag"></div>
+
+  <main class="grille" id="grille-recettes" aria-live="polite"></main>
+
+  <button class="bouton fab" onclick="ouvrirEditeur()">＋ Nouvelle recette</button>
+</div>
+
+<!-- ==================== ÉDITEUR ==================== -->
+<dialog id="dialogue-editeur" aria-labelledby="titre-editeur">
+  <div class="dialogue-entete">
+    <h2 id="titre-editeur">Nouvelle recette</h2>
+    <button class="fermer" onclick="document.getElementById('dialogue-editeur').close()" aria-label="Fermer">×</button>
+  </div>
+  <form class="dialogue-corps" id="form-recette" method="dialog">
+    <input type="hidden" id="r-id">
+    <div class="champ">
+      <label for="r-titre">Titre *</label>
+      <input id="r-titre" required maxlength="140" placeholder="Tarte fine aux pommes">
+    </div>
+    <div class="champ">
+      <label for="r-source">Source (URL de la page web)</label>
+      <input id="r-source" type="url" placeholder="https://…" inputmode="url">
+      <p class="aide">Collez le lien de la recette trouvée sur le web pour la retrouver plus tard.</p>
+    </div>
+    <div class="grille-2">
+      <div class="champ">
+        <label for="r-portions">Portions</label>
+        <input id="r-portions" placeholder="4 personnes">
+      </div>
+      <div class="champ">
+        <label for="r-temps">Temps total</label>
+        <input id="r-temps" placeholder="45 min">
+      </div>
+    </div>
+    <div class="champ">
+      <label for="r-tags">Tags (séparés par des virgules)</label>
+      <input id="r-tags" placeholder="dessert, rapide, végétarien">
+    </div>
+    <div class="champ">
+      <label for="r-ingredients">Ingrédients (un par ligne)</label>
+      <textarea id="r-ingredients" placeholder="3 pommes&#10;1 pâte feuilletée&#10;50 g de sucre"></textarea>
+    </div>
+    <div class="champ">
+      <label for="r-etapes">Étapes (une par ligne)</label>
+      <textarea id="r-etapes" placeholder="Préchauffer le four à 200 °C&#10;Étaler la pâte…"></textarea>
+    </div>
+    <div class="champ">
+      <label for="r-notes">Notes personnelles</label>
+      <textarea id="r-notes" style="min-height:70px" placeholder="Ajouter un peu de cannelle la prochaine fois…"></textarea>
+    </div>
+  </form>
+  <div class="actions-dialogue">
+    <button class="bouton secondaire" onclick="document.getElementById('dialogue-editeur').close()">Annuler</button>
+    <button class="bouton" onclick="enregistrerRecette()">Enregistrer la recette</button>
+  </div>
+</dialog>
+
+<!-- ==================== DÉTAIL ==================== -->
+<dialog id="dialogue-detail" aria-labelledby="detail-titre">
+  <div class="dialogue-entete">
+    <h2 id="detail-titre"></h2>
+    <button class="fermer" onclick="document.getElementById('dialogue-detail').close()" aria-label="Fermer">×</button>
+  </div>
+  <div class="dialogue-corps" id="detail-contenu"></div>
+  <div class="actions-dialogue">
+    <button class="bouton secondaire" id="btn-detail-modifier">Modifier</button>
+    <button class="bouton" onclick="document.getElementById('dialogue-detail').close()">Fermer</button>
+  </div>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* ==================== IndexedDB ==================== */
+const NOM_BD = 'carnet-recettes';
+const VERSION_BD = 1;
+let bd = null;
+
+function ouvrirBD() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(NOM_BD, VERSION_BD);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('utilisateurs')) {
+        db.createObjectStore('utilisateurs', { keyPath: 'nom' });
+      }
+      if (!db.objectStoreNames.contains('recettes')) {
+        const store = db.createObjectStore('recettes', { keyPath: 'id', autoIncrement: true });
+        store.createIndex('parProprietaire', 'proprietaire', { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function tx(store, mode = 'readonly') {
+  return bd.transaction(store, mode).objectStore(store);
+}
+
+function promesse(requete) {
+  return new Promise((resolve, reject) => {
+    requete.onsuccess = () => resolve(requete.result);
+    requete.onerror = () => reject(requete.error);
+  });
+}
+
+/* ==================== Authentification locale (PBKDF2) ==================== */
+const ITERATIONS = 210000;
+
+async function hacherMdp(mdp, sel) {
+  const enc = new TextEncoder();
+  const cle = await crypto.subtle.importKey('raw', enc.encode(mdp), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: sel, iterations: ITERATIONS, hash: 'SHA-256' },
+    cle, 256
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(bits)));
+}
+
+async function inscrire(nom, mdp) {
+  const existant = await promesse(tx('utilisateurs').get(nom));
+  if (existant) throw new Error('Ce nom d\'utilisateur existe déjà sur cet appareil.');
+  const sel = crypto.getRandomValues(new Uint8Array(16));
+  const hachage = await hacherMdp(mdp, sel);
+  await promesse(tx('utilisateurs', 'readwrite').add({
+    nom, sel: Array.from(sel), hachage, iterations: ITERATIONS, creeLe: Date.now()
+  }));
+}
+
+async function connecter(nom, mdp) {
+  const u = await promesse(tx('utilisateurs').get(nom));
+  if (!u) throw new Error('Utilisateur inconnu sur cet appareil.');
+  const hachage = await hacherMdp(mdp, new Uint8Array(u.sel));
+  if (hachage !== u.hachage) throw new Error('Mot de passe incorrect.');
+  localStorage.setItem('session-carnet', nom);
+}
+
+function deconnexion() {
+  localStorage.removeItem('session-carnet');
+  location.reload();
+}
+
+function utilisateurCourant() {
+  return localStorage.getItem('session-carnet');
+}
+
+/* ==================== État & interface ==================== */
+let modeAuth = 'connexion';
+let recettes = [];
+let filtreTag = null;
+
+function basculerOnglet(mode) {
+  modeAuth = mode;
+  const conn = mode === 'connexion';
+  document.getElementById('onglet-connexion').setAttribute('aria-selected', conn);
+  document.getElementById('onglet-inscription').setAttribute('aria-selected', !conn);
+  document.getElementById('btn-auth').textContent = conn ? 'Se connecter' : 'Créer mon compte';
+  document.getElementById('aide-mdp').hidden = conn;
+  document.getElementById('auth-mdp').autocomplete = conn ? 'current-password' : 'new-password';
+  document.getElementById('erreur-auth').textContent = '';
+}
+
+document.getElementById('form-auth').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nom = document.getElementById('auth-utilisateur').value.trim();
+  const mdp = document.getElementById('auth-mdp').value;
+  const erreur = document.getElementById('erreur-auth');
+  erreur.textContent = '';
+  try {
+    if (modeAuth === 'inscription') {
+      await inscrire(nom, mdp);
+      toast('Compte créé sur cet appareil');
+    }
+    await connecter(nom, mdp);
+    afficherApp();
+  } catch (err) {
+    erreur.textContent = err.message;
+  }
+});
+
+async function afficherApp() {
+  document.getElementById('vue-auth').style.display = 'none';
+  document.getElementById('vue-app').style.display = 'block';
+  document.getElementById('nom-utilisateur').textContent = utilisateurCourant();
+  await chargerRecettes();
+}
+
+/* ==================== Recettes (CRUD) ==================== */
+async function chargerRecettes() {
+  const index = tx('recettes').index('parProprietaire');
+  recettes = await promesse(index.getAll(utilisateurCourant()));
+  recettes.sort((a, b) => b.modifieLe - a.modifieLe);
+  rendreListe();
+}
+
+function ouvrirEditeur(recette = null) {
+  const d = document.getElementById('dialogue-editeur');
+  document.getElementById('titre-editeur').textContent = recette ? 'Modifier la recette' : 'Nouvelle recette';
+  document.getElementById('r-id').value = recette ? recette.id : '';
+  document.getElementById('r-titre').value = recette ? recette.titre : '';
+  document.getElementById('r-source').value = recette ? (recette.source || '') : '';
+  document.getElementById('r-portions').value = recette ? (recette.portions || '') : '';
+  document.getElementById('r-temps').value = recette ? (recette.temps || '') : '';
+  document.getElementById('r-tags').value = recette ? recette.tags.join(', ') : '';
+  document.getElementById('r-ingredients').value = recette ? recette.ingredients.join('\n') : '';
+  document.getElementById('r-etapes').value = recette ? recette.etapes.join('\n') : '';
+  document.getElementById('r-notes').value = recette ? (recette.notes || '') : '';
+  d.showModal();
+}
+
+async function enregistrerRecette() {
+  const form = document.getElementById('form-recette');
+  if (!form.reportValidity()) return;
+  const id = document.getElementById('r-id').value;
+  const lignes = (v) => v.split('\n').map(s => s.trim()).filter(Boolean);
+  const recette = {
+    proprietaire: utilisateurCourant(),
+    titre: document.getElementById('r-titre').value.trim(),
+    source: document.getElementById('r-source').value.trim(),
+    portions: document.getElementById('r-portions').value.trim(),
+    temps: document.getElementById('r-temps').value.trim(),
+    tags: document.getElementById('r-tags').value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean),
+    ingredients: lignes(document.getElementById('r-ingredients').value),
+    etapes: lignes(document.getElementById('r-etapes').value),
+    notes: document.getElementById('r-notes').value.trim(),
+    modifieLe: Date.now()
+  };
+  if (id) {
+    const existante = recettes.find(r => r.id === Number(id));
+    recette.id = Number(id);
+    recette.creeLe = existante ? existante.creeLe : Date.now();
+  } else {
+    recette.creeLe = Date.now();
+  }
+  await promesse(tx('recettes', 'readwrite').put(recette));
+  document.getElementById('dialogue-editeur').close();
+  toast('Recette enregistrée');
+  await chargerRecettes();
+}
+
+async function supprimerRecette(id, titre) {
+  if (!confirm(`Supprimer « ${titre} » ?`)) return;
+  await promesse(tx('recettes', 'readwrite').delete(id));
+  toast('Recette supprimée');
+  await chargerRecettes();
+}
+
+/* ==================== Rendu ==================== */
+function echapper(s) {
+  const div = document.createElement('div');
+  div.textContent = s ?? '';
+  return div.innerHTML;
+}
+
+function rendreListe() {
+  const grille = document.getElementById('grille-recettes');
+  const q = document.getElementById('recherche').value.trim().toLowerCase();
+
+  const visibles = recettes.filter(r => {
+    const dansTexte = !q ||
+      r.titre.toLowerCase().includes(q) ||
+      r.ingredients.some(i => i.toLowerCase().includes(q)) ||
+      r.tags.some(t => t.includes(q));
+    const dansTag = !filtreTag || r.tags.includes(filtreTag);
+    return dansTexte && dansTag;
+  });
+
+  rendreFiltres();
+
+  if (recettes.length === 0) {
+    grille.innerHTML = `<div class="etat-vide">
+      <h2>Votre carnet est vide</h2>
+      <p>Trouvez une recette sur le web, puis enregistrez-la ici avec son lien.<br>Elle restera disponible même sans connexion.</p>
+    </div>`;
+    return;
+  }
+  if (visibles.length === 0) {
+    grille.innerHTML = `<div class="etat-vide"><h2>Aucun résultat</h2><p>Essayez un autre mot-clé ou retirez le filtre de tag.</p></div>`;
+    return;
+  }
+
+  grille.innerHTML = visibles.map(r => `
+    <article class="fiche">
+      ${r.tags[0] ? `<span class="languette">${echapper(r.tags[0])}</span>` : ''}
+      <button class="corps" onclick="ouvrirDetail(${r.id})" aria-label="Ouvrir la recette ${echapper(r.titre)}">
+        <h3>${echapper(r.titre)}</h3>
+        <div class="meta">
+          ${r.temps ? `<span>⏱ ${echapper(r.temps)}</span>` : ''}
+          ${r.portions ? `<span>🍽 ${echapper(r.portions)}</span>` : ''}
+          <span>${r.ingredients.length} ingrédient${r.ingredients.length > 1 ? 's' : ''}</span>
+        </div>
+      </button>
+      <div class="pied">
+        ${r.source ? `<button onclick="window.open('${echapper(r.source)}','_blank','noopener')">Source</button>` : ''}
+        <button onclick="ouvrirEditeur(recettes.find(x=>x.id===${r.id}))">Modifier</button>
+        <button class="suppr" onclick="supprimerRecette(${r.id}, ${JSON.stringify(r.titre).replace(/"/g, '&quot;')})">Supprimer</button>
+      </div>
+    </article>
+  `).join('');
+}
+
+function rendreFiltres() {
+  const conteneur = document.getElementById('filtres-tags');
+  const tags = [...new Set(recettes.flatMap(r => r.tags))].sort();
+  if (tags.length === 0) { conteneur.innerHTML = ''; return; }
+  conteneur.innerHTML = tags.map(t =>
+    `<button class="puce" aria-pressed="${filtreTag === t}" onclick="basculerFiltre(${JSON.stringify(t).replace(/"/g, '&quot;')})">${echapper(t)}</button>`
+  ).join('');
+}
+
+function basculerFiltre(tag) {
+  filtreTag = (filtreTag === tag) ? null : tag;
+  rendreListe();
+}
+
+function ouvrirDetail(id) {
+  const r = recettes.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('detail-titre').textContent = r.titre;
+  const contenu = document.getElementById('detail-contenu');
+  contenu.innerHTML = `
+    <div class="detail-meta">
+      ${r.temps ? `<span>⏱ ${echapper(r.temps)}</span>` : ''}
+      ${r.portions ? `<span>🍽 ${echapper(r.portions)}</span>` : ''}
+      ${r.source ? `<a href="${echapper(r.source)}" target="_blank" rel="noopener">Voir la recette d'origine ↗</a>` : ''}
+    </div>
+    ${r.tags.length ? `<div class="detail-tags">${r.tags.map(t => `<span>${echapper(t)}</span>`).join('')}</div>` : ''}
+    ${r.ingredients.length ? `<div class="detail-section"><h3>Ingrédients</h3><ul>${r.ingredients.map(i => `<li>${echapper(i)}</li>`).join('')}</ul></div>` : ''}
+    ${r.etapes.length ? `<div class="detail-section"><h3>Préparation</h3><ol>${r.etapes.map(e => `<li>${echapper(e)}</li>`).join('')}</ol></div>` : ''}
+    ${r.notes ? `<div class="detail-section"><h3>Notes</h3><p>${echapper(r.notes)}</p></div>` : ''}
+  `;
+  document.getElementById('btn-detail-modifier').onclick = () => {
+    document.getElementById('dialogue-detail').close();
+    ouvrirEditeur(r);
+  };
+  document.getElementById('dialogue-detail').showModal();
+}
+
+document.getElementById('recherche').addEventListener('input', rendreListe);
+
+/* ==================== Export / Import JSON ==================== */
+function exporterJSON() {
+  const donnees = {
+    application: 'carnet-recettes',
+    version: 1,
+    exporteLe: new Date().toISOString(),
+    recettes: recettes.map(({ proprietaire, ...reste }) => reste)
+  };
+  const blob = new Blob([JSON.stringify(donnees, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `recettes-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Export JSON téléchargé');
+}
+
+document.getElementById('import-fichier').addEventListener('change', async (e) => {
+  const fichier = e.target.files[0];
+  if (!fichier) return;
+  try {
+    const donnees = JSON.parse(await fichier.text());
+    const liste = Array.isArray(donnees) ? donnees : donnees.recettes;
+    if (!Array.isArray(liste)) throw new Error('format');
+    let compteur = 0;
+    for (const r of liste) {
+      if (!r || typeof r.titre !== 'string') continue;
+      await promesse(tx('recettes', 'readwrite').add({
+        proprietaire: utilisateurCourant(),
+        titre: r.titre,
+        source: r.source || '',
+        portions: r.portions || '',
+        temps: r.temps || '',
+        tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
+        ingredients: Array.isArray(r.ingredients) ? r.ingredients.map(String) : [],
+        etapes: Array.isArray(r.etapes) ? r.etapes.map(String) : [],
+        notes: r.notes || '',
+        creeLe: r.creeLe || Date.now(),
+        modifieLe: Date.now()
+      }));
+      compteur++;
+    }
+    toast(`${compteur} recette${compteur > 1 ? 's' : ''} importée${compteur > 1 ? 's' : ''}`);
+    await chargerRecettes();
+  } catch {
+    toast('Fichier JSON non reconnu');
+  }
+  e.target.value = '';
+});
+
+/* ==================== Réseau & service worker ==================== */
+function majReseau() {
+  const badge = document.getElementById('badge-reseau');
+  const texte = document.getElementById('texte-reseau');
+  const enLigne = navigator.onLine;
+  badge.classList.toggle('hors-ligne', !enLigne);
+  texte.textContent = enLigne ? 'En ligne' : 'Hors ligne';
+}
+window.addEventListener('online', () => { majReseau(); toast('Connexion rétablie'); });
+window.addEventListener('offline', () => { majReseau(); toast('Mode hors ligne — vos recettes restent accessibles'); });
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      /* Le SW nécessite HTTPS ou localhost ; l'app fonctionne quand même. */
+    });
+  });
+}
+
+/* ==================== Toast ==================== */
+let minuterieToast = null;
+function toast(message) {
+  const t = document.getElementById('toast');
+  t.textContent = message;
+  t.classList.add('visible');
+  clearTimeout(minuterieToast);
+  minuterieToast = setTimeout(() => t.classList.remove('visible'), 2600);
+}
+
+/* ==================== Démarrage ==================== */
+(async function demarrer() {
+  bd = await ouvrirBD();
+  majReseau();
+  if (utilisateurCourant()) {
+    afficherApp();
+  }
+})();
+</script>
+</body>
+</html>
