@@ -41,6 +41,9 @@ input,textarea,select{font-family:inherit;font-size:1rem;color:var(--encre)}
 a{color:var(--safran-fonce)}
 :focus-visible{outline:3px solid var(--safran);outline-offset:2px;border-radius:4px}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* L'attribut hidden doit toujours l'emporter sur les règles display ci-dessous
+   (sinon #banniere-install{display:flex} le neutralise silencieusement). */
+[hidden]{display:none!important}
 
 /* ---------- Écran d'authentification ---------- */
 #vue-auth{
@@ -202,6 +205,12 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 #statut-import.succes{color:var(--feuille)}
 
 /* Bannière d'installation */
+@media all and (display-mode:standalone),
+       all and (display-mode:minimal-ui),
+       all and (display-mode:fullscreen),
+       all and (display-mode:window-controls-overlay){
+  #banniere-install,#pastille-install{display:none!important}
+}
 #banniere-install{
   position:fixed;left:18px;bottom:18px;z-index:40;
   width:min(520px,calc(100vw - 36px));
@@ -901,7 +910,10 @@ function refusRecent() {
 function majEspaceBas() {
   const banniere = document.getElementById('banniere-install');
   const pastille = document.getElementById('pastille-install');
-  const visible = !banniere.hidden ? banniere : (!pastille.hidden ? pastille : null);
+  // offsetParent vaut null si l'élément n'est pas rendu : on mesure ce qui est
+  // réellement à l'écran plutôt que de se fier au seul attribut hidden.
+  const affiche = (el) => el && el.offsetParent !== null;
+  const visible = affiche(banniere) ? banniere : (affiche(pastille) ? pastille : null);
   if (!visible) {
     document.body.classList.remove('avec-encart');
     document.documentElement.style.setProperty('--hauteur-install', '0px');
@@ -924,14 +936,14 @@ function deplierBanniere() {
   document.getElementById('pastille-install').hidden = true;
   document.getElementById('banniere-install').hidden = false;
   localStorage.removeItem(CLE_REDUITE);
-  majEspaceBas();
+  requestAnimationFrame(majEspaceBas);
 }
 
 function reduireBanniere(memoriser = true) {
   document.getElementById('banniere-install').hidden = true;
   document.getElementById('pastille-install').hidden = false;
   if (memoriser) localStorage.setItem(CLE_REDUITE, '1');
-  majEspaceBas();
+  requestAnimationFrame(majEspaceBas);
 }
 
 function retirerInstallation() {
