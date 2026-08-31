@@ -203,14 +203,31 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 
 /* Bannière d'installation */
 #banniere-install{
-  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
-  width:min(560px,calc(100vw - 24px));z-index:40;
+  position:fixed;left:18px;bottom:18px;z-index:40;
+  width:min(520px,calc(100vw - 36px));
   display:flex;align-items:center;gap:14px;
   background:var(--carte);border:1px solid var(--ligne);border-left:5px solid var(--safran);
   border-radius:12px;box-shadow:0 10px 34px rgba(34,48,58,.2);padding:13px 15px;
   animation:monte .28s ease-out;
 }
-@keyframes monte{from{opacity:0;transform:translateX(-50%) translateY(14px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes monte{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.reduire{
+  background:none;border:none;font-size:1.45rem;line-height:1;color:var(--encre-70);
+  padding:2px 10px 6px;border-radius:6px;
+}
+.reduire:hover{background:rgba(34,48,58,.07);color:var(--encre)}
+/* Pastille une fois la bannière réduite — ancrée à gauche, loin du bouton flottant */
+#pastille-install{
+  position:fixed;left:18px;bottom:18px;z-index:40;
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--carte);border:1px solid var(--ligne);border-left:4px solid var(--safran);
+  border-radius:999px;padding:7px 15px 7px 8px;
+  box-shadow:0 6px 18px rgba(34,48,58,.16);
+  font-family:inherit;font-weight:700;font-size:.87rem;color:var(--encre);
+  animation:monte .2s ease-out;
+}
+#pastille-install:hover{background:var(--papier)}
+#pastille-install img{width:24px;height:24px;border-radius:6px}
 #banniere-install img{width:42px;height:42px;border-radius:9px;flex-shrink:0}
 .texte-install{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
 .texte-install strong{font-size:.97rem}
@@ -218,12 +235,20 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 .actions-install{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .actions-install .bouton{padding:9px 17px;font-size:.9rem}
 @media (max-width:480px){
-  #banniere-install{flex-wrap:wrap;bottom:12px}
+  #banniere-install{flex-wrap:wrap;left:12px;right:12px;bottom:12px;width:auto}
   .actions-install{width:100%;justify-content:flex-end}
   .actions-install .bouton{flex:1}
+  #pastille-install{bottom:12px;left:12px}
 }
-/* Laisse la place au bouton flottant quand la bannière est visible */
-body.avec-banniere .fab{bottom:104px}
+/* Le bouton flottant remonte exactement de la hauteur occupée en bas,
+   mesurée en JS (--hauteur-install) : la bannière ne peut jamais le couvrir. */
+.fab{transition:bottom .2s ease}
+body.avec-encart .fab{bottom:calc(22px + var(--hauteur-install, 0px) + 14px)}
+/* Sur petit écran la bannière occupe toute la largeur : on évite le chevauchement
+   horizontal en remontant franchement le bouton. */
+@media (max-width:480px){
+  body.avec-encart .fab{bottom:calc(12px + var(--hauteur-install, 0px) + 12px)}
+}
 
 /* Toast */
 #toast{
@@ -382,9 +407,14 @@ body.avec-banniere .fab{bottom:104px}
   </div>
   <div class="actions-install">
     <button class="bouton" id="btn-installer">Installer</button>
-    <button class="fermer" id="btn-install-plus-tard" aria-label="Masquer">×</button>
+    <button class="reduire" id="btn-install-reduire" aria-label="Réduire" title="Réduire">–</button>
   </div>
 </div>
+
+<button id="pastille-install" aria-label="Installer l'application" title="Installer l'application" hidden>
+  <img src="icons/icon-192.png" alt="">
+  <span>Installer</span>
+</button>
 
 <div id="toast" role="status"></div>
 
@@ -847,11 +877,19 @@ if ('serviceWorker' in navigator) {
 
 /* ==================== Bannière d'installation ==================== */
 let evenementInstall = null;
+const CLE_REDUITE = 'install-reduite';
 const CLE_REFUS = 'install-refuse-le';
-const DELAI_RAPPEL = 7 * 24 * 60 * 60 * 1000; // on ne redemande pas avant 7 jours
+const DELAI_RAPPEL = 7 * 24 * 60 * 60 * 1000;
 
+/* --- Détection « déjà installée » (plusieurs signaux, aucun n'est fiable seul) --- */
 function dejaInstallee() {
-  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: minimal-ui)').matches
+    || window.matchMedia('(display-mode: fullscreen)').matches
+    || window.matchMedia('(display-mode: window-controls-overlay)').matches
+    || window.navigator.standalone === true              // Safari iOS
+    || document.referrer.startsWith('android-app://')    // TWA Android
+    || localStorage.getItem('app-installee') === '1';
 }
 
 function refusRecent() {
@@ -859,56 +897,104 @@ function refusRecent() {
   return refus && (Date.now() - refus) < DELAI_RAPPEL;
 }
 
-function afficherBanniere(detail) {
-  if (dejaInstallee() || refusRecent()) return;
+/* --- Mesure la hauteur réellement occupée en bas pour décaler le bouton flottant --- */
+function majEspaceBas() {
   const banniere = document.getElementById('banniere-install');
+  const pastille = document.getElementById('pastille-install');
+  const visible = !banniere.hidden ? banniere : (!pastille.hidden ? pastille : null);
+  if (!visible) {
+    document.body.classList.remove('avec-encart');
+    document.documentElement.style.setProperty('--hauteur-install', '0px');
+    return;
+  }
+  document.body.classList.add('avec-encart');
+  document.documentElement.style.setProperty('--hauteur-install', visible.offsetHeight + 'px');
+}
+
+function proposerInstallation(detail) {
+  if (dejaInstallee() || refusRecent()) return;
   if (detail) document.getElementById('install-detail').textContent = detail;
-  banniere.hidden = false;
-  document.body.classList.add('avec-banniere');
+  // On respecte l'état réduit choisi précédemment
+  if (localStorage.getItem(CLE_REDUITE) === '1') reduireBanniere(false);
+  else deplierBanniere();
 }
 
-function masquerBanniere(memoriser) {
+function deplierBanniere() {
+  if (dejaInstallee()) return;
+  document.getElementById('pastille-install').hidden = true;
+  document.getElementById('banniere-install').hidden = false;
+  localStorage.removeItem(CLE_REDUITE);
+  majEspaceBas();
+}
+
+function reduireBanniere(memoriser = true) {
   document.getElementById('banniere-install').hidden = true;
-  document.body.classList.remove('avec-banniere');
-  if (memoriser) localStorage.setItem(CLE_REFUS, String(Date.now()));
+  document.getElementById('pastille-install').hidden = false;
+  if (memoriser) localStorage.setItem(CLE_REDUITE, '1');
+  majEspaceBas();
 }
 
-// Chrome, Edge, Android : l'événement fournit l'invite native
+function retirerInstallation() {
+  document.getElementById('banniere-install').hidden = true;
+  document.getElementById('pastille-install').hidden = true;
+  majEspaceBas();
+}
+
+/* --- Événements --- */
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   evenementInstall = e;
-  afficherBanniere();
+  proposerInstallation();
 });
 
 document.getElementById('btn-installer').addEventListener('click', async () => {
   if (evenementInstall) {
-    masquerBanniere(false);
+    retirerInstallation();
     evenementInstall.prompt();
     const { outcome } = await evenementInstall.userChoice;
     evenementInstall = null;
-    if (outcome === 'dismissed') localStorage.setItem(CLE_REFUS, String(Date.now()));
+    if (outcome === 'dismissed') {
+      localStorage.setItem(CLE_REFUS, String(Date.now()));
+    }
   } else {
-    // iOS / Safari : pas d'invite programmatique, on explique le geste
     toast('Appuyez sur Partager, puis « Sur l\'écran d\'accueil »');
   }
 });
 
-document.getElementById('btn-install-plus-tard').addEventListener('click', () => masquerBanniere(true));
+document.getElementById('btn-install-reduire').addEventListener('click', () => reduireBanniere(true));
+document.getElementById('pastille-install').addEventListener('click', deplierBanniere);
 
 window.addEventListener('appinstalled', () => {
-  masquerBanniere(false);
+  localStorage.setItem('app-installee', '1');
+  localStorage.removeItem(CLE_REDUITE);
   localStorage.removeItem(CLE_REFUS);
+  retirerInstallation();
   toast('Carnet installé — retrouvez-le sur votre écran d\'accueil');
 });
 
-// Safari iOS n'émet pas beforeinstallprompt : on propose le geste manuel
+// Lancement en mode installé : on retire tout immédiatement
+window.matchMedia('(display-mode: standalone)').addEventListener('change', (e) => {
+  if (e.matches) { localStorage.setItem('app-installee', '1'); retirerInstallation(); }
+});
+
+// La hauteur change si la bannière passe sur deux lignes (rotation, redimensionnement)
+window.addEventListener('resize', majEspaceBas);
+
+// Safari iOS : pas de beforeinstallprompt, on propose le geste manuel
 (function bannierePourIOS() {
-  const estIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const estIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const estSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
   if (estIOS && estSafari && !dejaInstallee()) {
-    setTimeout(() => afficherBanniere('Appuyez sur Partager ⬆︎, puis « Sur l\'écran d\'accueil ».'), 2500);
+    setTimeout(() => proposerInstallation('Appuyez sur Partager ⬆︎, puis « Sur l\'écran d\'accueil ».'), 2500);
   }
 })();
+
+// Sécurité : si l'app tourne déjà en mode installé, rien ne s'affiche jamais
+if (dejaInstallee()) {
+  localStorage.setItem('app-installee', '1');
+  retirerInstallation();
+}
 
 /* ==================== Toast ==================== */
 let minuterieToast = null;

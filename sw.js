@@ -4,7 +4,7 @@
    - Cache runtime "stale-while-revalidate" pour les polices et autres ressources GET.
    - Navigation : réseau d'abord, repli sur le shell en cache si hors ligne.
 */
-const VERSION = 'v1.3.0';
+const VERSION = 'v1.4.0';
 const SHELL_CACHE = `shell-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
 
