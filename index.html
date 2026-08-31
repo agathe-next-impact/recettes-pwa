@@ -116,12 +116,6 @@ header.appli h1{font-size:1.25rem;color:var(--papier)}
   flex:1;min-width:220px;padding:11px 14px;border:1px solid var(--ligne);
   border-radius:999px;background:var(--carte);
 }
-.filtres-tags{max-width:1080px;margin:0 auto;padding:8px 20px 0;display:flex;gap:8px;flex-wrap:wrap}
-.puce{
-  border:1px solid var(--ligne);background:var(--carte);border-radius:999px;
-  padding:5px 13px;font-size:.85rem;font-weight:700;color:var(--encre-70);
-}
-.puce[aria-pressed="true"]{background:var(--encre);color:var(--papier);border-color:var(--encre)}
 
 main.grille{
   max-width:1080px;margin:0 auto;padding:18px 20px 90px;
@@ -365,7 +359,6 @@ main.grille{padding-bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) 
   <div class="barre-outils">
     <input type="search" id="recherche" placeholder="Rechercher un titre, un ingrédient, un tag…" aria-label="Rechercher une recette">
   </div>
-  <div class="filtres-tags" id="filtres-tags" role="group" aria-label="Filtrer par tag"></div>
 
   <main class="grille" id="grille-recettes" aria-live="polite"></main>
 
@@ -610,7 +603,6 @@ function utilisateurCourant() {
 /* ==================== État & interface ==================== */
 let modeAuth = 'connexion';
 let recettes = [];
-let filtreTag = null;
 
 function basculerOnglet(mode) {
   modeAuth = mode;
@@ -761,16 +753,11 @@ function rendreListe() {
   const grille = document.getElementById('grille-recettes');
   const q = document.getElementById('recherche').value.trim().toLowerCase();
 
-  const visibles = recettes.filter(r => {
-    const dansTexte = !q ||
-      r.titre.toLowerCase().includes(q) ||
-      r.ingredients.some(i => i.toLowerCase().includes(q)) ||
-      r.tags.some(t => t.includes(q));
-    const dansTag = !filtreTag || r.tags.includes(filtreTag);
-    return dansTexte && dansTag;
-  });
-
-  rendreFiltres();
+  // La recherche porte sur le titre, les ingrédients et les tags.
+  const visibles = recettes.filter(r => !q
+    || r.titre.toLowerCase().includes(q)
+    || r.ingredients.some(i => i.toLowerCase().includes(q))
+    || r.tags.some(t => t.includes(q)));
 
   if (recettes.length === 0) {
     grille.innerHTML = `<div class="etat-vide">
@@ -780,7 +767,7 @@ function rendreListe() {
     return;
   }
   if (visibles.length === 0) {
-    grille.innerHTML = `<div class="etat-vide"><h2>Aucun résultat</h2><p>Essayez un autre mot-clé ou retirez le filtre de tag.</p></div>`;
+    grille.innerHTML = `<div class="etat-vide"><h2>Aucun résultat</h2><p>Essayez un autre mot-clé.</p></div>`;
     return;
   }
 
@@ -802,20 +789,6 @@ function rendreListe() {
       </div>
     </article>
   `).join('');
-}
-
-function rendreFiltres() {
-  const conteneur = document.getElementById('filtres-tags');
-  const tags = [...new Set(recettes.flatMap(r => r.tags))].sort();
-  if (tags.length === 0) { conteneur.innerHTML = ''; return; }
-  conteneur.innerHTML = tags.map(t =>
-    `<button class="puce" aria-pressed="${filtreTag === t}" onclick="basculerFiltre(${JSON.stringify(t).replace(/"/g, '&quot;')})">${echapper(t)}</button>`
-  ).join('');
-}
-
-function basculerFiltre(tag) {
-  filtreTag = (filtreTag === tag) ? null : tag;
-  rendreListe();
 }
 
 function ouvrirDetail(id) {
@@ -1071,7 +1044,6 @@ function marquerOnglet(actif) {
 
 function allerA(destination) {
   if (destination === 'recettes') {
-    filtreTag = null;
     document.getElementById('recherche').value = '';
     rendreListe();
     window.scrollTo({ top: 0, behavior: 'smooth' });
