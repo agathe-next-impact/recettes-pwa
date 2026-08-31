@@ -187,6 +187,20 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 .detail-section ul,.detail-section ol{margin:0;padding-left:22px;line-height:1.65}
 .detail-section p{margin:0;line-height:1.6;white-space:pre-wrap}
 
+/* Import par lien */
+.panneau-import{
+  background:#F3EFE4;border:1px dashed var(--safran);border-radius:10px;
+  padding:14px;margin-bottom:20px;
+}
+.panneau-import>label{display:block;font-weight:700;font-size:.85rem;margin-bottom:8px}
+.ligne-import{display:flex;gap:8px;flex-wrap:wrap}
+.ligne-import input{flex:1;min-width:200px;padding:11px 12px;border:1px solid var(--ligne);border-radius:8px;background:var(--carte)}
+.ligne-import .bouton{padding:11px 18px}
+.ligne-import .bouton[disabled]{opacity:.55;cursor:wait}
+#statut-import{margin:8px 0 0}
+#statut-import.erreur{color:var(--tomate)}
+#statut-import.succes{color:var(--feuille)}
+
 /* Toast */
 #toast{
   position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
@@ -272,6 +286,14 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
   </div>
   <form class="dialogue-corps" id="form-recette" method="dialog">
     <input type="hidden" id="r-id">
+    <div class="panneau-import" id="panneau-import">
+      <label for="import-url">Depuis un site de cuisine</label>
+      <div class="ligne-import">
+        <input id="import-url" type="url" inputmode="url" placeholder="Collez le lien d'une recette (Marmiton, 750g…)">
+        <button type="button" class="bouton" id="btn-import" onclick="importerDepuisLien()">Récupérer</button>
+      </div>
+      <p class="aide" id="statut-import">Collez le lien : la fiche se remplit toute seule (titre, portions, temps, ingrédients, étapes).</p>
+    </div>
     <div class="champ">
       <label for="r-titre">Titre *</label>
       <input id="r-titre" required maxlength="140" placeholder="Tarte fine aux pommes">
@@ -467,6 +489,12 @@ function ouvrirEditeur(recette = null) {
   document.getElementById('r-ingredients').value = recette ? recette.ingredients.join('\n') : '';
   document.getElementById('r-etapes').value = recette ? recette.etapes.join('\n') : '';
   document.getElementById('r-notes').value = recette ? (recette.notes || '') : '';
+  document.getElementById('panneau-import').style.display = recette ? 'none' : '';
+  document.getElementById('import-url').value = '';
+  derniereUrlImportee = '';
+  const statutImport = document.getElementById('statut-import');
+  statutImport.textContent = 'Collez le lien : la fiche se remplit toute seule (titre, portions, temps, ingrédients, étapes).';
+  statutImport.className = '';
   d.showModal();
 }
 
@@ -599,6 +627,87 @@ function ouvrirDetail(id) {
 }
 
 document.getElementById('recherche').addEventListener('input', rendreListe);
+
+/* ==================== Import depuis un lien ==================== */
+async function importerDepuisLien() {
+  const champUrl = document.getElementById('import-url');
+  const bouton = document.getElementById('btn-import');
+  const statut = document.getElementById('statut-import');
+  const url = champUrl.value.trim();
+  statut.className = '';
+
+  if (!url) { champUrl.focus(); return; }
+  if (!navigator.onLine) {
+    statut.textContent = 'L\'import nécessite une connexion. Vous pouvez saisir la recette manuellement.';
+    statut.className = 'erreur';
+    return;
+  }
+
+  bouton.disabled = true;
+  const texteInitial = bouton.textContent;
+  bouton.textContent = 'Récupération…';
+  statut.textContent = 'Lecture de la page…';
+
+  try {
+    const reponse = await fetch('/api/extraire?url=' + encodeURIComponent(url));
+    const donnees = await reponse.json();
+    if (!donnees.ok) throw new Error(donnees.erreur || 'Extraction impossible.');
+
+    const remplir = (id, valeur) => {
+      const champ = document.getElementById(id);
+      if (valeur && !champ.value.trim()) champ.value = valeur;
+    };
+    remplir('r-titre', donnees.titre);
+    remplir('r-source', donnees.source || url);
+    remplir('r-portions', donnees.portions);
+    remplir('r-temps', donnees.temps);
+    remplir('r-tags', (donnees.tags || []).join(', '));
+    remplir('r-ingredients', (donnees.ingredients || []).join('\n'));
+    remplir('r-etapes', (donnees.etapes || []).join('\n'));
+    remplir('r-notes', donnees.notes);
+
+    if (donnees.partiel) {
+      statut.textContent = 'Ce site ne publie pas de recette structurée : seuls le titre et la description ont pu être récupérés.';
+      statut.className = '';
+    } else {
+      statut.textContent = `Recette récupérée : ${donnees.ingredients.length} ingrédient(s), ${donnees.etapes.length} étape(s). Relisez puis enregistrez.`;
+      statut.className = 'succes';
+    }
+  } catch (e) {
+    statut.textContent = e.message || 'Impossible de récupérer cette page.';
+    statut.className = 'erreur';
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = texteInitial;
+  }
+}
+document.getElementById('import-url').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); importerDepuisLien(); }
+});
+
+/* Import automatique : dès qu'une URL valide est collée ou saisie, sans clic. */
+let minuterieImportAuto = null;
+let derniereUrlImportee = '';
+function planifierImportAuto(valeur) {
+  clearTimeout(minuterieImportAuto);
+  const url = valeur.trim();
+  if (!/^https?:\/\/\S+\.\S+/i.test(url) || url === derniereUrlImportee) return;
+  minuterieImportAuto = setTimeout(async () => {
+    derniereUrlImportee = url;
+    document.getElementById('import-url').value = url;
+    await importerDepuisLien();
+  }, 350);
+}
+document.getElementById('import-url').addEventListener('paste', (e) => {
+  const texte = (e.clipboardData || window.clipboardData).getData('text');
+  planifierImportAuto(texte);
+});
+document.getElementById('import-url').addEventListener('input', (e) => planifierImportAuto(e.target.value));
+// Coller le lien directement dans le champ « Source » déclenche aussi l'import.
+document.getElementById('r-source').addEventListener('paste', (e) => {
+  const texte = (e.clipboardData || window.clipboardData).getData('text');
+  if (document.getElementById('panneau-import').style.display !== 'none') planifierImportAuto(texte);
+});
 
 /* ==================== Export / Import JSON ==================== */
 function exporterJSON() {

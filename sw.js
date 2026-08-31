@@ -4,7 +4,7 @@
    - Cache runtime "stale-while-revalidate" pour les polices et autres ressources GET.
    - Navigation : réseau d'abord, repli sur le shell en cache si hors ligne.
 */
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.1.0';
 const SHELL_CACHE = `shell-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
 
@@ -43,6 +43,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+
+  // API d'extraction : réseau uniquement, jamais de cache
+  if (url.pathname.startsWith('/api/')) return;
 
   // Navigations : réseau d'abord, repli sur index.html en cache
   if (request.mode === 'navigate') {
