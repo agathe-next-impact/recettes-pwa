@@ -397,6 +397,7 @@ main.grille{padding-bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) 
       <p><button class="bouton secondaire" onclick="copierMarquePage()">Copier le code</button></p>
       <textarea id="code-marque-page" rows="3" hidden readonly></textarea>
     </div>
+    <button onclick="reinitialiserCaches()"><span class="ico" aria-hidden="true">♻</span> Forcer la mise à jour de l'app</button>
     <button onclick="afficherInfoStockage()"><span class="ico" aria-hidden="true">💾</span> État du stockage</button>
     <p id="info-stockage" hidden></p>
     <div class="separateur"></div>
@@ -840,8 +841,19 @@ async function importerDepuisLien() {
   statut.textContent = 'Lecture de la page…';
 
   try {
-    const reponse = await fetch('/api/extraire?url=' + encodeURIComponent(url));
-    const donnees = await reponse.json();
+    // cache: 'no-store' évite qu'un service worker ancien ou le cache HTTP
+    // rejoue une erreur passée à la place d'une vraie requête.
+    const appel = (forcer) => fetch(
+      '/api/extraire?url=' + encodeURIComponent(url) + (forcer ? '&frais=' + Date.now() : ''),
+      { cache: 'no-store' }
+    ).then((r) => r.json());
+
+    let donnees = await appel(false);
+    // Un échec peut venir d'une réponse figée : on retente une fois en forçant.
+    if (!donnees.ok) {
+      statut.textContent = 'Nouvelle tentative…';
+      donnees = await appel(true);
+    }
     if (!donnees.ok) throw new Error(donnees.erreur || 'Extraction impossible.');
 
     const remplir = (id, valeur) => {
@@ -972,10 +984,30 @@ window.addEventListener('online', () => { majReseau(); toast('Connexion rétabli
 window.addEventListener('offline', () => { majReseau(); toast('Mode hors ligne — vos recettes restent accessibles'); });
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      /* Le SW nécessite HTTPS ou localhost ; l'app fonctionne quand même. */
-    });
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      // Vérifier immédiatement, puis toutes les heures, qu'une version plus
+      // récente n'est pas disponible (un SW ancien peut servir des réponses figées).
+      reg.update();
+      setInterval(() => reg.update(), 3600000);
+      reg.addEventListener('updatefound', () => {
+        const nouveau = reg.installing;
+        if (!nouveau) return;
+        nouveau.addEventListener('statechange', () => {
+          if (nouveau.state === 'installed' && navigator.serviceWorker.controller) {
+            toast('Nouvelle version installée — rechargez pour l\'appliquer');
+          }
+        });
+      });
+    } catch { /* HTTPS ou localhost requis ; l'app fonctionne sans. */ }
+  });
+  // Quand le nouveau SW prend la main, on recharge une seule fois
+  let dejaRecharge = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (dejaRecharge) return;
+    dejaRecharge = true;
+    location.reload();
   });
 }
 
@@ -1067,13 +1099,38 @@ document.getElementById('panneau-plus').addEventListener('close', () => {
 });
 document.getElementById('nav-plus').addEventListener('click', () => marquerOnglet('nav-plus'));
 
+
+/* Vide les caches de l'application et réinstalle le service worker.
+   À utiliser quand un appareil se comporte différemment des autres : c'est
+   presque toujours une version ancienne restée active. Les recettes, stockées
+   dans IndexedDB, ne sont pas touchées. */
+async function reinitialiserCaches() {
+  if (!confirm("Vider le cache de l'application et recharger ?\n\nVos recettes ne seront pas supprimées.")) return;
+  try {
+    if (window.caches) {
+      const noms = await caches.keys();
+      await Promise.all(noms.map((n) => caches.delete(n)));
+    }
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    toast('Cache vidé — rechargement…');
+    setTimeout(() => location.reload(true), 800);
+  } catch (e) {
+    console.error(e);
+    toast('Échec du nettoyage : rechargez avec Ctrl+Maj+R');
+  }
+}
+
 async function afficherInfoStockage() {
   const zone = document.getElementById('info-stockage');
   const etat = await etatStockage();
   if (!etat) {
     zone.textContent = 'Votre navigateur ne fournit pas ces informations.';
   } else {
-    zone.textContent = `${etat.recettes} recette(s) enregistrée(s) · ${etat.utilise} utilisés sur ${etat.quota} disponibles · stockage ${etat.persistant ? 'persistant (protégé de l\'effacement automatique)' : 'standard'}.`;
+    const caches_ = window.caches ? (await caches.keys()).join(', ') || 'aucun' : 'indisponible';
+    zone.textContent = `${etat.recettes} recette(s) · ${etat.utilise} sur ${etat.quota} · stockage ${etat.persistant ? 'persistant' : 'standard'} · caches : ${caches_}`;
   }
   zone.hidden = false;
 }

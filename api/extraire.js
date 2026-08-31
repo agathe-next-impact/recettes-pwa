@@ -476,9 +476,18 @@ async function telecharger(cible) {
 }
 
 module.exports = async (req, res) => {
-  res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
+  // Par défaut on ne met rien en cache : seules les extractions RÉUSSIES le seront.
+  // (Auparavant l'en-tête était posé pour toutes les réponses, ce qui figeait
+  //  un blocage ponctuel pendant 24 h, y compris après sa levée.)
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  const reussite = (charge) => {
+    res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800');
+    return res.status(200).json(charge);
+  };
   try {
     const urlBrute = req.query.url;
+    // ?frais=1 (ou n'importe quel paramètre variable) force un nouveau calcul :
+    // l'URL de cache étant différente, le CDN ne peut pas répondre à la place.
     if (!urlBrute) return res.status(400).json({ ok: false, erreur: 'Paramètre url manquant.' });
 
     let url;
@@ -520,11 +529,11 @@ module.exports = async (req, res) => {
     if (resultat && (resultat.ingredients?.length || resultat.etapes?.length)) {
       // Signaler une extraction encore partielle pour que l'utilisateur vérifie
       if (!estComplet(resultat)) resultat.approximatif = true;
-      return res.status(200).json(marquer(resultat));
+      return reussite(marquer(resultat));
     }
 
     const repli = replisOpenGraph(html, url.href);
-    if (repli) return res.status(200).json(marquer(repli));
+    if (repli) return reussite(marquer(repli));
 
     return res.status(404).json({
       ok: false,
