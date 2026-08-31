@@ -6,6 +6,7 @@
 
 const dns = require('dns').promises;
 const net = require('net');
+const cheerio = require('cheerio');
 
 const ENTITES = {
   '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'",
@@ -105,6 +106,7 @@ function normaliser(recette, urlSource) {
 
   return {
     ok: true,
+    methode: 'json-ld',
     titre: decoderEntites(recette.name || ''),
     source: urlSource,
     portions,
@@ -113,6 +115,158 @@ function normaliser(recette, urlSource) {
     ingredients,
     etapes: aplatirInstructions(recette.recipeInstructions),
     notes: decoderEntites(recette.description || '')
+  };
+}
+
+
+/* ---------- Repli 2 : microdonnées schema.org (itemprop) et microformats hRecipe ----------
+   Beaucoup de blogs (anciens plugins WordPress : Recipe Card, ZipList, EasyRecipe…)
+   n'émettent pas de JSON-LD mais balisent la recette en HTML avec des classes
+   hRecipe (fn, ingredient, instruction, preptime…) ou des attributs itemprop. */
+
+const SELECTEURS = {
+  conteneur: '[itemtype*="schema.org/Recipe" i], .hrecipe, .recipe, .easyrecipe, .wprm-recipe, .recipe-card',
+  titre: '[itemprop="name"], .fn, .recipe-title, .wprm-recipe-name',
+  ingredient: '[itemprop="recipeIngredient"], [itemprop="ingredients"], .ingredient, .wprm-recipe-ingredient, .ingredients li',
+  etape: '[itemprop="recipeInstructions"], .instruction, .instructions li, .wprm-recipe-instruction, .preparation li',
+  portions: '[itemprop="recipeYield"], .yield, .wprm-recipe-servings',
+  prep: '[itemprop="prepTime"], .preptime, .wprm-recipe-prep-time',
+  cuisson: '[itemprop="cookTime"], .cooktime, .wprm-recipe-cook-time',
+  total: '[itemprop="totalTime"], .duration, .wprm-recipe-total-time',
+  description: '[itemprop="description"], .summary, .wprm-recipe-summary'
+};
+
+function texteDe($, $racine, selecteur) {
+  const el = $racine.find(selecteur).first();
+  if (!el.length) return '';
+  // Les durées sont souvent dans un attribut datetime/content au format ISO
+  const iso = el.attr('datetime') || el.attr('content') || '';
+  if (/^P/i.test(iso)) return formaterDuree(iso);
+  return decoderEntites(el.text());
+}
+
+function listeDe($, $racine, selecteur) {
+  const vus = new Set();
+  return $racine.find(selecteur).toArray()
+    .map((el) => decoderEntites($(el).text()))
+    .filter((t) => {
+      if (!t || t.length < 2 || t.length > 500) return false;
+      if (vus.has(t)) return false;
+      vus.add(t);
+      return true;
+    });
+}
+
+function extraireDuBalisage(html, urlSource) {
+  const $ = cheerio.load(html);
+  // On retire ce qui pollue : commentaires, navigation, recettes suggérées
+  $('#comments, .comments, .comment, nav, header, footer, script, style, .related, .sidebar').remove();
+
+  let $racine = $(SELECTEURS.conteneur).first();
+  if (!$racine.length) $racine = $('body');
+
+  const ingredients = listeDe($, $racine, SELECTEURS.ingredient);
+  let etapes = listeDe($, $racine, SELECTEURS.etape);
+
+  // Un seul bloc d'instructions en prose : on le découpe en phrases-étapes
+  if (etapes.length === 1 && etapes[0].length > 200) {
+    etapes = etapes[0].split(/(?<=[.!?])\s+(?=[A-ZÀÉÈÊÎÔÛ])/).map((s) => s.trim()).filter((s) => s.length > 10);
+  }
+
+  // Sans ingrédients identifiables, le balisage n'est pas exploitable
+  if (ingredients.length < 2) return null;
+
+  const temps = texteDe($, $racine, SELECTEURS.total)
+    || [texteDe($, $racine, SELECTEURS.prep), texteDe($, $racine, SELECTEURS.cuisson)].filter(Boolean).join(' + ');
+
+  return {
+    ok: true,
+    methode: 'balisage',
+    titre: texteDe($, $racine, SELECTEURS.titre) || decoderEntites($('h1').first().text()),
+    source: urlSource,
+    portions: texteDe($, $racine, SELECTEURS.portions),
+    temps,
+    tags: [],
+    ingredients,
+    etapes,
+    notes: texteDe($, $racine, SELECTEURS.description)
+  };
+}
+
+
+/* ---------- Repli 3 : heuristique par intitulés ----------
+   Dernier recours pour les blogs sans aucun balisage sémantique : on repère les
+   titres « Ingrédients » / « Préparation » dans le texte et on récupère la liste
+   ou les paragraphes qui suivent. Indépendant des noms de classes du thème. */
+
+const MOTS_INGREDIENTS = /^\s*(ingr[ée]dients?|il vous faut|pour cette recette)\s*:?\s*$/i;
+const MOTS_ETAPES = /^\s*(pr[ée]paration|instructions?|[ée]tapes?|r[ée]alisation|recette)\s*:?\s*$/i;
+const MOTS_PORTIONS = /(pour|donne|rendement)\s*:?\s*(\d+[^.,;]{0,25}(personnes?|parts?|portions?|pi[èe]ces?))/i;
+const MOTS_TEMPS = /(pr[ée]p(?:aration)?|cuisson|cook|total)\s*:?\s*((?:\d+\s*(?:h|hr|heures?|min|minutes?)\s*)+)/gi;
+
+function collecterApres($, $depart, limite = 40) {
+  const items = [];
+  let $n = $depart;
+  for (let i = 0; i < 12 && items.length === 0; i++) {
+    $n = $n.next();
+    if (!$n.length) break;
+    const balise = ($n.prop('tagName') || '').toLowerCase();
+    if (balise === 'ul' || balise === 'ol') {
+      $n.find('li').each((_, li) => {
+        const t = decoderEntites($(li).text());
+        if (t && t.length > 1 && t.length < 400) items.push(t);
+      });
+    } else if (balise === 'p' || balise === 'div') {
+      const t = decoderEntites($n.text());
+      if (t && t.length > 15 && t.length < 1200) items.push(t);
+    }
+  }
+  return items.slice(0, limite);
+}
+
+function extraireParHeuristique(html, urlSource) {
+  const $ = cheerio.load(html);
+  $('#comments, .comments, .comment, #respond, nav, header, footer, script, style, .related, .sidebar, aside').remove();
+
+  let ingredients = [];
+  let etapes = [];
+
+  // On balaie tous les éléments courts susceptibles d'être un intitulé
+  $('h1,h2,h3,h4,h5,h6,p,strong,b,span,div,dt').each((_, el) => {
+    const t = decoderEntites($(el).text());
+    if (!t || t.length > 40) return;
+    if (!ingredients.length && MOTS_INGREDIENTS.test(t)) ingredients = collecterApres($, $(el));
+    else if (!etapes.length && MOTS_ETAPES.test(t)) etapes = collecterApres($, $(el));
+  });
+
+  if (ingredients.length < 2) return null;
+
+  // À défaut de section « Préparation », on prend les paragraphes substantiels du corps
+  if (!etapes.length) {
+    etapes = $('article p, .entry-content p, .post-content p, main p').toArray()
+      .map((el) => decoderEntites($(el).text()))
+      .filter((t) => t.length > 40 && t.length < 1200)
+      .slice(0, 25);
+  }
+
+  const texteGlobal = decoderEntites($('body').text()).slice(0, 6000);
+  const portions = (texteGlobal.match(MOTS_PORTIONS) || [])[2] || '';
+  const temps = [...texteGlobal.matchAll(MOTS_TEMPS)]
+    .map((m) => `${m[1].toLowerCase().startsWith('cuisson') || m[1].toLowerCase() === 'cook' ? 'cuisson' : 'prép.'} ${m[2].trim()}`)
+    .slice(0, 2).join(' + ');
+
+  return {
+    ok: true,
+    methode: 'heuristique',
+    approximatif: true,
+    titre: decoderEntites($('h1').first().text()) || decoderEntites($('title').first().text()),
+    source: urlSource,
+    portions: portions.trim(),
+    temps,
+    tags: [],
+    ingredients,
+    etapes,
+    notes: ''
   };
 }
 
@@ -185,6 +339,18 @@ module.exports = async (req, res) => {
         if (recette) return res.status(200).json(normaliser(recette, url.href));
       } catch { /* bloc JSON-LD malformé : on passe au suivant */ }
     }
+
+    // Repli 2 : microdonnées / hRecipe
+    try {
+      const parBalisage = extraireDuBalisage(html, url.href);
+      if (parBalisage) return res.status(200).json(parBalisage);
+    } catch { /* balisage inexploitable : on tente Open Graph */ }
+
+    // Repli 3 : heuristique par intitulés
+    try {
+      const parHeuristique = extraireParHeuristique(html, url.href);
+      if (parHeuristique) return res.status(200).json(parHeuristique);
+    } catch { /* on tente Open Graph */ }
 
     const repli = replisOpenGraph(html, url.href);
     if (repli) return res.status(200).json(repli);

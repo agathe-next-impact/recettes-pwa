@@ -201,6 +201,30 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 #statut-import.erreur{color:var(--tomate)}
 #statut-import.succes{color:var(--feuille)}
 
+/* Bannière d'installation */
+#banniere-install{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+  width:min(560px,calc(100vw - 24px));z-index:40;
+  display:flex;align-items:center;gap:14px;
+  background:var(--carte);border:1px solid var(--ligne);border-left:5px solid var(--safran);
+  border-radius:12px;box-shadow:0 10px 34px rgba(34,48,58,.2);padding:13px 15px;
+  animation:monte .28s ease-out;
+}
+@keyframes monte{from{opacity:0;transform:translateX(-50%) translateY(14px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+#banniere-install img{width:42px;height:42px;border-radius:9px;flex-shrink:0}
+.texte-install{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.texte-install strong{font-size:.97rem}
+.texte-install span{font-size:.83rem;color:var(--encre-70);line-height:1.35}
+.actions-install{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.actions-install .bouton{padding:9px 17px;font-size:.9rem}
+@media (max-width:480px){
+  #banniere-install{flex-wrap:wrap;bottom:12px}
+  .actions-install{width:100%;justify-content:flex-end}
+  .actions-install .bouton{flex:1}
+}
+/* Laisse la place au bouton flottant quand la bannière est visible */
+body.avec-banniere .fab{bottom:104px}
+
 /* Toast */
 #toast{
   position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
@@ -349,6 +373,19 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
   </div>
 </dialog>
 
+<!-- ==================== BANNIÈRE D'INSTALLATION ==================== -->
+<div id="banniere-install" role="region" aria-label="Installer l'application" hidden>
+  <img src="icons/icon-192.png" alt="">
+  <div class="texte-install">
+    <strong>Installer le carnet</strong>
+    <span id="install-detail">Accès depuis l'écran d'accueil, et vos recettes hors ligne.</span>
+  </div>
+  <div class="actions-install">
+    <button class="bouton" id="btn-installer">Installer</button>
+    <button class="fermer" id="btn-install-plus-tard" aria-label="Masquer">×</button>
+  </div>
+</div>
+
 <div id="toast" role="status"></div>
 
 <script>
@@ -466,7 +503,32 @@ async function afficherApp() {
   document.getElementById('vue-auth').style.display = 'none';
   document.getElementById('vue-app').style.display = 'block';
   document.getElementById('nom-utilisateur').textContent = utilisateurCourant();
+  demanderStockagePersistant();
   await chargerRecettes();
+}
+
+/* Demande au navigateur de ne pas évincer IndexedDB en cas de pression disque.
+   Généralement accordé d'office aux PWA installées ; sinon la demande est
+   silencieuse et sans effet visible pour l'utilisateur. */
+async function demanderStockagePersistant() {
+  if (!navigator.storage?.persist) return;
+  try {
+    if (await navigator.storage.persisted()) return;
+    const accorde = await navigator.storage.persist();
+    if (accorde) console.info('Stockage persistant accordé.');
+  } catch { /* API indisponible : on continue normalement */ }
+}
+
+/* Diagnostic du stockage, affiché à la demande */
+async function etatStockage() {
+  if (!navigator.storage?.estimate) return null;
+  const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+  return {
+    persistant: navigator.storage.persisted ? await navigator.storage.persisted() : false,
+    utilise: (usage / 1024 / 1024).toFixed(2) + ' Mo',
+    quota: (quota / 1024 / 1024).toFixed(0) + ' Mo',
+    recettes: recettes.length
+  };
 }
 
 /* ==================== Recettes (CRUD) ==================== */
@@ -666,11 +728,15 @@ async function importerDepuisLien() {
     remplir('r-etapes', (donnees.etapes || []).join('\n'));
     remplir('r-notes', donnees.notes);
 
+    const n = `${donnees.ingredients.length} ingrédient(s), ${donnees.etapes.length} étape(s)`;
     if (donnees.partiel) {
-      statut.textContent = 'Ce site ne publie pas de recette structurée : seuls le titre et la description ont pu être récupérés.';
+      statut.textContent = 'Ce site ne publie pas de recette structurée : seuls le titre et la description ont pu être récupérés. Complétez à la main.';
+      statut.className = '';
+    } else if (donnees.approximatif) {
+      statut.textContent = `Lecture approximative de la page : ${n}. Vérifiez et corrigez avant d'enregistrer.`;
       statut.className = '';
     } else {
-      statut.textContent = `Recette récupérée : ${donnees.ingredients.length} ingrédient(s), ${donnees.etapes.length} étape(s). Relisez puis enregistrez.`;
+      statut.textContent = `Recette récupérée : ${n}. Relisez puis enregistrez.`;
       statut.className = 'succes';
     }
   } catch (e) {
@@ -778,6 +844,71 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
+
+/* ==================== Bannière d'installation ==================== */
+let evenementInstall = null;
+const CLE_REFUS = 'install-refuse-le';
+const DELAI_RAPPEL = 7 * 24 * 60 * 60 * 1000; // on ne redemande pas avant 7 jours
+
+function dejaInstallee() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function refusRecent() {
+  const refus = Number(localStorage.getItem(CLE_REFUS) || 0);
+  return refus && (Date.now() - refus) < DELAI_RAPPEL;
+}
+
+function afficherBanniere(detail) {
+  if (dejaInstallee() || refusRecent()) return;
+  const banniere = document.getElementById('banniere-install');
+  if (detail) document.getElementById('install-detail').textContent = detail;
+  banniere.hidden = false;
+  document.body.classList.add('avec-banniere');
+}
+
+function masquerBanniere(memoriser) {
+  document.getElementById('banniere-install').hidden = true;
+  document.body.classList.remove('avec-banniere');
+  if (memoriser) localStorage.setItem(CLE_REFUS, String(Date.now()));
+}
+
+// Chrome, Edge, Android : l'événement fournit l'invite native
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  evenementInstall = e;
+  afficherBanniere();
+});
+
+document.getElementById('btn-installer').addEventListener('click', async () => {
+  if (evenementInstall) {
+    masquerBanniere(false);
+    evenementInstall.prompt();
+    const { outcome } = await evenementInstall.userChoice;
+    evenementInstall = null;
+    if (outcome === 'dismissed') localStorage.setItem(CLE_REFUS, String(Date.now()));
+  } else {
+    // iOS / Safari : pas d'invite programmatique, on explique le geste
+    toast('Appuyez sur Partager, puis « Sur l\'écran d\'accueil »');
+  }
+});
+
+document.getElementById('btn-install-plus-tard').addEventListener('click', () => masquerBanniere(true));
+
+window.addEventListener('appinstalled', () => {
+  masquerBanniere(false);
+  localStorage.removeItem(CLE_REFUS);
+  toast('Carnet installé — retrouvez-le sur votre écran d\'accueil');
+});
+
+// Safari iOS n'émet pas beforeinstallprompt : on propose le geste manuel
+(function bannierePourIOS() {
+  const estIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const estSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
+  if (estIOS && estSafari && !dejaInstallee()) {
+    setTimeout(() => afficherBanniere('Appuyez sur Partager ⬆︎, puis « Sur l\'écran d\'accueil ».'), 2500);
+  }
+})();
 
 /* ==================== Toast ==================== */
 let minuterieToast = null;
