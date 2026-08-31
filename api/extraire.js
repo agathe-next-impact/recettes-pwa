@@ -119,6 +119,52 @@ function normaliser(recette, urlSource) {
 }
 
 
+
+/* ---------- Fusion des méthodes ----------
+   Le JSON-LD de certains sites est incomplet : ingrédients présents mais pas
+   d'instructions, ou « ingrédients » qui sont en fait les mots-clés du site
+   (« Ail », « Aubergines »…) sans quantités. On ne s'arrête donc plus au premier
+   résultat : on complète chaque champ manquant avec les autres méthodes. */
+
+/* Une liste d'ingrédients crédible contient des quantités (chiffres, unités). */
+function ingredientsCredibles(liste) {
+  if (!liste || liste.length < 2) return false;
+  const avecQuantite = liste.filter((i) => /\d|\b(c\.|cuill|pinc[ée]e|gousse|sachet|tranche|kg|g\b|ml|cl|l\b)/i.test(i));
+  return avecQuantite.length >= Math.max(2, liste.length * 0.3);
+}
+
+function scoreListe(liste) {
+  if (!liste || !liste.length) return 0;
+  return liste.length + (ingredientsCredibles(liste) ? 100 : 0);
+}
+
+function fusionner(base, complement) {
+  if (!complement) return base;
+  if (!base) return complement;
+  const res = { ...base };
+  // Champs texte : on prend la première valeur non vide
+  for (const champ of ['titre', 'portions', 'temps', 'notes']) {
+    if (!res[champ] && complement[champ]) res[champ] = complement[champ];
+  }
+  if (!res.tags?.length && complement.tags?.length) res.tags = complement.tags;
+  // Étapes : on prend la liste non vide
+  if (!res.etapes?.length && complement.etapes?.length) {
+    res.etapes = complement.etapes;
+    res.completePar = complement.methode;
+  }
+  // Ingrédients : on préfère la liste qui comporte de vraies quantités
+  if (scoreListe(complement.ingredients) > scoreListe(res.ingredients)) {
+    res.ingredients = complement.ingredients;
+    res.completePar = complement.methode;
+  }
+  return res;
+}
+
+/* Un résultat est complet s'il a des ingrédients crédibles ET des étapes. */
+function estComplet(r) {
+  return r && ingredientsCredibles(r.ingredients) && r.etapes && r.etapes.length > 0;
+}
+
 /* ---------- Repli 2 : microdonnées schema.org (itemprop) et microformats hRecipe ----------
    Beaucoup de blogs (anciens plugins WordPress : Recipe Card, ZipList, EasyRecipe…)
    n'émettent pas de JSON-LD mais balisent la recette en HTML avec des classes
@@ -448,27 +494,34 @@ module.exports = async (req, res) => {
     const marquer = (o) => Object.assign(o, { voie }, archive ? { archive } : {});
 
 
-    // Tous les blocs <script type="application/ld+json">
+    // On collecte les résultats de chaque méthode, puis on les fusionne.
+    let resultat = null;
+
+    // 1. JSON-LD
     const blocs = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
     for (const [, contenu] of blocs) {
       try {
         const donnees = JSON.parse(contenu.trim());
         const recette = trouverRecette(donnees);
-        if (recette) return res.status(200).json(marquer(normaliser(recette, url.href)));
-      } catch { /* bloc JSON-LD malformé : on passe au suivant */ }
+        if (recette) { resultat = normaliser(recette, url.href); break; }
+      } catch { /* bloc malformé : suivant */ }
     }
 
-    // Repli 2 : microdonnées / hRecipe
-    try {
-      const parBalisage = extraireDuBalisage(html, url.href);
-      if (parBalisage) return res.status(200).json(marquer(parBalisage));
-    } catch { /* balisage inexploitable : on tente Open Graph */ }
+    // 2. Microdonnées / hRecipe — complète le JSON-LD s'il est lacunaire
+    if (!estComplet(resultat)) {
+      try { resultat = fusionner(resultat, extraireDuBalisage(html, url.href)); } catch { /* ignoré */ }
+    }
 
-    // Repli 3 : heuristique par intitulés
-    try {
-      const parHeuristique = extraireParHeuristique(html, url.href);
-      if (parHeuristique) return res.status(200).json(marquer(parHeuristique));
-    } catch { /* on tente Open Graph */ }
+    // 3. Heuristique par intitulés — dernier apport de contenu
+    if (!estComplet(resultat)) {
+      try { resultat = fusionner(resultat, extraireParHeuristique(html, url.href)); } catch { /* ignoré */ }
+    }
+
+    if (resultat && (resultat.ingredients?.length || resultat.etapes?.length)) {
+      // Signaler une extraction encore partielle pour que l'utilisateur vérifie
+      if (!estComplet(resultat)) resultat.approximatif = true;
+      return res.status(200).json(marquer(resultat));
+    }
 
     const repli = replisOpenGraph(html, url.href);
     if (repli) return res.status(200).json(marquer(repli));

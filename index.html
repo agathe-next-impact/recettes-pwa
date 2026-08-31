@@ -858,6 +858,7 @@ async function importerDepuisLien() {
     remplir('r-notes', donnees.notes);
 
     const n = `${donnees.ingredients.length} ingrédient(s), ${donnees.etapes.length} étape(s)`;
+    const appoint = donnees.completePar ? ' Préparation complétée depuis le corps de la page.' : '';
     const via = donnees.voie === 'archive'
       ? ` Lue depuis une copie archivée${donnees.archive ? ' du ' + donnees.archive.slice(6, 8) + '/' + donnees.archive.slice(4, 6) + '/' + donnees.archive.slice(0, 4) : ''} : la recette a pu changer depuis.`
       : (donnees.voie === 'proxy' ? ' Lue via un service tiers.' : '');
@@ -868,7 +869,7 @@ async function importerDepuisLien() {
       statut.textContent = `Lecture approximative de la page : ${n}.${via} Vérifiez et corrigez avant d'enregistrer.`;
       statut.className = '';
     } else {
-      statut.textContent = `Recette récupérée : ${n}.${via} Relisez puis enregistrez.`;
+      statut.textContent = `Recette récupérée : ${n}.${appoint}${via} Relisez puis enregistrez.`;
       statut.className = via ? '' : 'succes';
     }
   } catch (e) {
