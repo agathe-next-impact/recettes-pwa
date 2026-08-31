@@ -199,24 +199,39 @@ function extraireDuBalisage(html, urlSource) {
    titres « Ingrédients » / « Préparation » dans le texte et on récupère la liste
    ou les paragraphes qui suivent. Indépendant des noms de classes du thème. */
 
-const MOTS_INGREDIENTS = /^\s*(ingr[ée]dients?|il vous faut|pour cette recette)\s*:?\s*$/i;
-const MOTS_ETAPES = /^\s*(pr[ée]paration|instructions?|[ée]tapes?|r[ée]alisation|recette)\s*:?\s*$/i;
+// Correspondance par PRÉFIXE : « Ingrédients (pour 4 personnes) : » doit matcher,
+// tout comme « Étapes de préparation : ». Une ancre de fin ferait tout échouer.
+const MOTS_INGREDIENTS = /^\s*(les\s+)?ingr[ée]dients?\b|^\s*il vous faut\b|^\s*pour cette recette\b|^\s*liste des courses\b/i;
+const MOTS_ETAPES = /^\s*([ée]tapes?\b|pr[ée]paration\b|instructions?\b|r[ée]alisation\b|mode op[ée]ratoire\b|comment (faire|proc[ée]der))/i;
 const MOTS_PORTIONS = /(pour|donne|rendement)\s*:?\s*(\d+[^.,;]{0,25}(personnes?|parts?|portions?|pi[èe]ces?))/i;
 const MOTS_TEMPS = /(pr[ée]p(?:aration)?|cuisson|cook|total)\s*:?\s*((?:\d+\s*(?:h|hr|heures?|min|minutes?)\s*)+)/gi;
 
-function collecterApres($, $depart, limite = 40) {
+/* Collecte TOUT le contenu qui suit un intitulé, jusqu'au titre de rang égal ou
+   supérieur. Indispensable quand les étapes sont réparties sous plusieurs
+   sous-titres (« 1. Préparer la marinade », « 2. Préchauffer le gril »…). */
+function collecterApres($, $depart, limite = 60) {
   const items = [];
+  const rangDepart = parseInt(($depart.prop('tagName') || 'H6').replace(/\D/g, ''), 10) || 6;
   let $n = $depart;
-  for (let i = 0; i < 12 && items.length === 0; i++) {
+  for (let i = 0; i < 60 && items.length < limite; i++) {
     $n = $n.next();
     if (!$n.length) break;
     const balise = ($n.prop('tagName') || '').toLowerCase();
+    const rang = /^h[1-6]$/.test(balise) ? parseInt(balise[1], 10) : null;
+    // Un titre de rang égal ou supérieur clôt la section
+    if (rang !== null && rang <= rangDepart) break;
+    // Un sous-titre est conservé comme intitulé d'étape
+    if (rang !== null) {
+      const t = decoderEntites($n.text());
+      if (t && t.length < 120) items.push(t);
+      continue;
+    }
     if (balise === 'ul' || balise === 'ol') {
       $n.find('li').each((_, li) => {
         const t = decoderEntites($(li).text());
         if (t && t.length > 1 && t.length < 400) items.push(t);
       });
-    } else if (balise === 'p' || balise === 'div') {
+    } else if (balise === 'p') {
       const t = decoderEntites($n.text());
       if (t && t.length > 15 && t.length < 1200) items.push(t);
     }
@@ -234,7 +249,7 @@ function extraireParHeuristique(html, urlSource) {
   // On balaie tous les éléments courts susceptibles d'être un intitulé
   $('h1,h2,h3,h4,h5,h6,p,strong,b,span,div,dt').each((_, el) => {
     const t = decoderEntites($(el).text());
-    if (!t || t.length > 40) return;
+    if (!t || t.length > 90) return;
     if (!ingredients.length && MOTS_INGREDIENTS.test(t)) ingredients = collecterApres($, $(el));
     else if (!etapes.length && MOTS_ETAPES.test(t)) etapes = collecterApres($, $(el));
   });
@@ -297,6 +312,77 @@ async function verifierHoteAutorise(hostname) {
   if (prive) throw new Error('adresse privée refusée');
 }
 
+
+/* ---------- Téléchargement résilient ----------
+   Beaucoup de sites refusent les requêtes qui ne ressemblent pas à un vrai
+   navigateur (403, ou connexion coupée sans réponse). On tente successivement :
+   1. des en-têtes de navigateur complets ;
+   2. l'identité de Googlebot, que la plupart des sites laissent passer pour le SEO ;
+   3. un proxy d'extraction public en dernier recours. */
+
+const UA_NAVIGATEUR = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+const UA_GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+function enTetes(ua, cible) {
+  return {
+    'User-Agent': ua,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': new URL(cible).origin + '/'
+  };
+}
+
+async function tenter(cible, ua, delai = 12000) {
+  const controleur = new AbortController();
+  const minuterie = setTimeout(() => controleur.abort(), delai);
+  try {
+    const r = await fetch(cible, {
+      signal: controleur.signal,
+      redirect: 'follow',
+      headers: enTetes(ua, cible)
+    });
+    if (!r.ok) throw new Error(`statut ${r.status}`);
+    return (await r.text()).slice(0, 3_000_000);
+  } finally {
+    clearTimeout(minuterie);
+  }
+}
+
+async function telecharger(cible) {
+  const echecs = [];
+  for (const ua of [UA_NAVIGATEUR, UA_GOOGLEBOT]) {
+    try {
+      return await tenter(cible, ua);
+    } catch (e) {
+      echecs.push(e.name === 'AbortError' ? 'délai dépassé' : e.message);
+    }
+  }
+  // Dernier recours : proxy d'extraction (renvoie le contenu en texte/markdown)
+  try {
+    const r = await fetch('https://r.jina.ai/' + cible, {
+      headers: { 'Accept': 'text/plain', 'User-Agent': UA_NAVIGATEUR }
+    });
+    if (r.ok) {
+      const texte = (await r.text()).slice(0, 3_000_000);
+      if (texte && texte.length > 200) return texte;
+    }
+    echecs.push('proxy indisponible');
+  } catch (e) {
+    echecs.push('proxy : ' + e.message);
+  }
+  const err = new Error(`Le site refuse la lecture automatique (${echecs.join(' ; ')}).`);
+  err.bloque = true;
+  throw err;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
   try {
@@ -312,23 +398,8 @@ module.exports = async (req, res) => {
     }
     await verifierHoteAutorise(url.hostname);
 
-    const controleur = new AbortController();
-    const minuterie = setTimeout(() => controleur.abort(), 8000);
-    const reponse = await fetch(url.href, {
-      signal: controleur.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; CarnetRecettes/1.0; +https://recettes-pwa-one.vercel.app)',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.5'
-      }
-    });
-    clearTimeout(minuterie);
+    const html = await telecharger(url.href);
 
-    if (!reponse.ok) {
-      return res.status(502).json({ ok: false, erreur: `Le site a répondu ${reponse.status}.` });
-    }
-    const html = (await reponse.text()).slice(0, 2_000_000);
 
     // Tous les blocs <script type="application/ld+json">
     const blocs = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
@@ -360,9 +431,11 @@ module.exports = async (req, res) => {
       erreur: 'Aucune recette structurée trouvée sur cette page.'
     });
   } catch (e) {
-    const message = e.name === 'AbortError'
-      ? 'Le site met trop de temps à répondre.'
-      : 'Impossible de récupérer cette page.';
+    const message = e.bloque
+      ? e.message + " Copiez les ingrédients et les étapes à la main."
+      : (e.name === 'AbortError'
+          ? 'Le site met trop de temps à répondre.'
+          : 'Impossible de récupérer cette page.');
     return res.status(502).json({ ok: false, erreur: message });
   }
 };

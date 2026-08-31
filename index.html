@@ -157,10 +157,6 @@ main.grille{
 }
 .etat-vide h2{font-size:1.3rem;margin-bottom:8px;color:var(--encre)}
 
-.fab{
-  position:fixed;right:22px;bottom:22px;z-index:30;
-  box-shadow:0 8px 24px rgba(34,48,58,.28);font-size:1.05rem;padding:14px 24px;
-}
 
 /* ---------- Dialogues ---------- */
 dialog{
@@ -204,6 +200,50 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 #statut-import.erreur{color:var(--tomate)}
 #statut-import.succes{color:var(--feuille)}
 
+
+/* ---------- Menu du bas ---------- */
+:root{--h-menu:60px}
+.menu-bas{
+  position:fixed;left:0;right:0;bottom:0;z-index:35;
+  display:grid;grid-template-columns:repeat(4,1fr);
+  background:var(--carte);border-top:1px solid var(--ligne);
+  box-shadow:0 -2px 14px rgba(34,48,58,.07);
+  padding-bottom:env(safe-area-inset-bottom,0);
+}
+.menu-bas button{
+  background:none;border:none;padding:8px 4px 9px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:.7rem;font-weight:700;color:var(--encre-70);
+  border-top:3px solid transparent;margin-top:-1px;
+  transition:color .15s;
+}
+.menu-bas button .ico{font-size:1.25rem;line-height:1.15}
+.menu-bas button[aria-current="true"]{color:var(--encre);border-top-color:var(--safran)}
+.menu-bas button:hover{color:var(--encre)}
+/* Action principale mise en avant */
+.menu-bas .principal .ico{
+  background:var(--safran);color:#fff;width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:1.35rem;
+  box-shadow:0 3px 10px rgba(217,142,4,.4);margin-top:-14px;
+}
+.menu-bas .principal{color:var(--encre)}
+
+/* Le contenu ne passe jamais sous le menu */
+main.grille{padding-bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) + 24px)}
+
+/* Panneau « Plus » */
+#panneau-plus{padding:0}
+.liste-actions{display:flex;flex-direction:column;padding:6px 0 10px}
+.liste-actions button{
+  background:none;border:none;text-align:left;width:100%;
+  padding:14px 24px;font-size:1rem;display:flex;align-items:center;gap:13px;color:var(--encre);
+}
+.liste-actions button:hover{background:#F3EFE4}
+.liste-actions button .ico{font-size:1.15rem;width:24px;text-align:center}
+.liste-actions .separateur{height:1px;background:var(--ligne);margin:6px 24px}
+.liste-actions button.sortie{color:var(--tomate)}
+#info-stockage{padding:4px 24px 16px;font-size:.8rem;color:var(--encre-70);line-height:1.5}
+
 /* Bannière d'installation */
 @media all and (display-mode:standalone),
        all and (display-mode:minimal-ui),
@@ -212,7 +252,7 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
   #banniere-install,#pastille-install{display:none!important}
 }
 #banniere-install{
-  position:fixed;left:18px;bottom:18px;z-index:40;
+  position:fixed;left:18px;bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) + 14px);z-index:40;
   width:min(520px,calc(100vw - 36px));
   display:flex;align-items:center;gap:14px;
   background:var(--carte);border:1px solid var(--ligne);border-left:5px solid var(--safran);
@@ -227,7 +267,7 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 .reduire:hover{background:rgba(34,48,58,.07);color:var(--encre)}
 /* Pastille une fois la bannière réduite — ancrée à gauche, loin du bouton flottant */
 #pastille-install{
-  position:fixed;left:18px;bottom:18px;z-index:40;
+  position:fixed;left:18px;bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) + 14px);z-index:40;
   display:inline-flex;align-items:center;gap:8px;
   background:var(--carte);border:1px solid var(--ligne);border-left:4px solid var(--safran);
   border-radius:999px;padding:7px 15px 7px 8px;
@@ -244,24 +284,18 @@ dialog::backdrop{background:rgba(34,48,58,.55)}
 .actions-install{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .actions-install .bouton{padding:9px 17px;font-size:.9rem}
 @media (max-width:480px){
-  #banniere-install{flex-wrap:wrap;left:12px;right:12px;bottom:12px;width:auto}
+  #banniere-install{flex-wrap:wrap;left:12px;right:12px;width:auto;bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) + 10px)}
   .actions-install{width:100%;justify-content:flex-end}
   .actions-install .bouton{flex:1}
-  #pastille-install{bottom:12px;left:12px}
+  #pastille-install{left:12px;bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) + 10px)}
 }
 /* Le bouton flottant remonte exactement de la hauteur occupée en bas,
    mesurée en JS (--hauteur-install) : la bannière ne peut jamais le couvrir. */
-.fab{transition:bottom .2s ease}
-body.avec-encart .fab{bottom:calc(22px + var(--hauteur-install, 0px) + 14px)}
-/* Sur petit écran la bannière occupe toute la largeur : on évite le chevauchement
-   horizontal en remontant franchement le bouton. */
-@media (max-width:480px){
-  body.avec-encart .fab{bottom:calc(12px + var(--hauteur-install, 0px) + 12px)}
-}
+
 
 /* Toast */
 #toast{
-  position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+  position:fixed;left:50%;bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) + 16px);transform:translateX(-50%) translateY(20px);
   background:var(--encre);color:var(--papier);padding:11px 20px;border-radius:999px;
   font-weight:700;font-size:.92rem;opacity:0;pointer-events:none;transition:all .25s;z-index:50;
 }
@@ -319,10 +353,7 @@ body.avec-encart .fab{bottom:calc(22px + var(--hauteur-install, 0px) + 14px)}
     <span class="badge-reseau" id="badge-reseau"><span class="point"></span><span id="texte-reseau">En ligne</span></span>
     <div class="menu-utilisateur">
       <span id="nom-utilisateur"></span>
-      <button onclick="exporterJSON()">Exporter</button>
-      <button onclick="document.getElementById('import-fichier').click()">Importer</button>
       <input type="file" id="import-fichier" accept="application/json" hidden>
-      <button onclick="deconnexion()">Se déconnecter</button>
     </div>
   </header>
 
@@ -333,8 +364,38 @@ body.avec-encart .fab{bottom:calc(22px + var(--hauteur-install, 0px) + 14px)}
 
   <main class="grille" id="grille-recettes" aria-live="polite"></main>
 
-  <button class="bouton fab" onclick="ouvrirEditeur()">＋ Nouvelle recette</button>
+  <nav class="menu-bas" aria-label="Navigation principale">
+    <button id="nav-recettes" aria-current="true" onclick="allerA('recettes')">
+      <span class="ico" aria-hidden="true">🗂</span><span>Recettes</span>
+    </button>
+    <button id="nav-recherche" onclick="allerA('recherche')">
+      <span class="ico" aria-hidden="true">🔍</span><span>Rechercher</span>
+    </button>
+    <button class="principal" onclick="ouvrirEditeur()">
+      <span class="ico" aria-hidden="true">＋</span><span>Ajouter</span>
+    </button>
+    <button id="nav-plus" onclick="document.getElementById('panneau-plus').showModal()">
+      <span class="ico" aria-hidden="true">☰</span><span>Plus</span>
+    </button>
+  </nav>
 </div>
+
+<!-- ==================== PANNEAU « PLUS » ==================== -->
+<dialog id="panneau-plus" aria-labelledby="titre-plus">
+  <div class="dialogue-entete">
+    <h2 id="titre-plus">Mon carnet</h2>
+    <button class="fermer" onclick="document.getElementById('panneau-plus').close()" aria-label="Fermer">×</button>
+  </div>
+  <div class="liste-actions">
+    <button onclick="exporterJSON()"><span class="ico" aria-hidden="true">⬇</span> Exporter mes recettes (JSON)</button>
+    <button onclick="document.getElementById('import-fichier').click()"><span class="ico" aria-hidden="true">⬆</span> Importer un fichier JSON</button>
+    <div class="separateur"></div>
+    <button onclick="afficherInfoStockage()"><span class="ico" aria-hidden="true">💾</span> État du stockage</button>
+    <p id="info-stockage" hidden></p>
+    <div class="separateur"></div>
+    <button class="sortie" onclick="deconnexion()"><span class="ico" aria-hidden="true">⏻</span> Se déconnecter</button>
+  </div>
+</dialog>
 
 <!-- ==================== ÉDITEUR ==================== -->
 <dialog id="dialogue-editeur" aria-labelledby="titre-editeur">
@@ -437,7 +498,27 @@ let bd = null;
 
 function ouvrirBD() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(NOM_BD, VERSION_BD);
+    if (typeof indexedDB === 'undefined' || !indexedDB) {
+      return reject(new Error("Le stockage local est indisponible. Sur iPhone, la navigation privée le désactive : ouvrez l'application dans un onglet normal."));
+    }
+    // Safari peut laisser open() sans réponse : on borne l'attente.
+    const minuterie = setTimeout(() => {
+      reject(new Error("Le stockage local ne répond pas. Fermez complètement l'application puis rouvrez-la."));
+    }, 10000);
+    let req;
+    try {
+      req = indexedDB.open(NOM_BD, VERSION_BD);
+    } catch (e) {
+      clearTimeout(minuterie);
+      return reject(new Error("Le stockage local est inaccessible (navigation privée ?)."));
+    }
+    req.onblocked = () => {
+      clearTimeout(minuterie);
+      reject(new Error("Une autre fenêtre de l'application bloque la mise à jour. Fermez les autres onglets."));
+    };
+    const finir = (fn) => (...a) => { clearTimeout(minuterie); fn(...a); };
+    req.addEventListener('success', finir(() => resolve(req.result)));
+    req.addEventListener('error', finir(() => reject(req.error || new Error('Ouverture du stockage impossible.'))));
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('utilisateurs')) {
@@ -448,12 +529,20 @@ function ouvrirBD() {
         store.createIndex('parProprietaire', 'proprietaire', { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
   });
 }
 
+/* Garantit que la base est prête avant toute opération, quel que soit l'ordre
+   d'exécution du script (un échec ailleurs ne doit plus empêcher le démarrage). */
+let promesseBD = null;
+function bdPrete() {
+  if (bd) return Promise.resolve(bd);
+  if (!promesseBD) promesseBD = ouvrirBD().then((db) => { bd = db; return db; });
+  return promesseBD;
+}
+
 function tx(store, mode = 'readonly') {
+  if (!bd) throw new Error("Le stockage n'est pas encore prêt. Réessayez dans un instant.");
   return bd.transaction(store, mode).objectStore(store);
 }
 
@@ -525,16 +614,26 @@ document.getElementById('form-auth').addEventListener('submit', async (e) => {
   const nom = document.getElementById('auth-utilisateur').value.trim();
   const mdp = document.getElementById('auth-mdp').value;
   const erreur = document.getElementById('erreur-auth');
+  const bouton = document.getElementById('btn-auth');
+  const libelle = bouton.textContent;
   erreur.textContent = '';
+  bouton.disabled = true;
+  bouton.textContent = 'Patientez…';
   try {
+    await bdPrete();                       // la base peut ne pas être encore ouverte
     if (modeAuth === 'inscription') {
       await inscrire(nom, mdp);
       toast('Compte créé sur cet appareil');
     }
     await connecter(nom, mdp);
-    afficherApp();
+    await afficherApp();
   } catch (err) {
-    erreur.textContent = err.message;
+    // On affiche toujours quelque chose : un échec muet est le pire des cas.
+    erreur.textContent = err && err.message ? err.message : "Échec inattendu. Rechargez la page et réessayez.";
+    console.error('Authentification :', err);
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = libelle;
   }
 });
 
@@ -550,7 +649,7 @@ async function afficherApp() {
    Généralement accordé d'office aux PWA installées ; sinon la demande est
    silencieuse et sans effet visible pour l'utilisateur. */
 async function demanderStockagePersistant() {
-  if (!navigator.storage?.persist) return;
+  if (!navigator.storage || typeof navigator.storage.persist !== 'function') return;
   try {
     if (await navigator.storage.persisted()) return;
     const accorde = await navigator.storage.persist();
@@ -560,7 +659,7 @@ async function demanderStockagePersistant() {
 
 /* Diagnostic du stockage, affiché à la demande */
 async function etatStockage() {
-  if (!navigator.storage?.estimate) return null;
+  if (!navigator.storage || typeof navigator.storage.estimate !== 'function') return null;
   const { usage = 0, quota = 0 } = await navigator.storage.estimate();
   return {
     persistant: navigator.storage.persisted ? await navigator.storage.persisted() : false,
@@ -661,7 +760,7 @@ function rendreListe() {
   if (recettes.length === 0) {
     grille.innerHTML = `<div class="etat-vide">
       <h2>Votre carnet est vide</h2>
-      <p>Trouvez une recette sur le web, puis enregistrez-la ici avec son lien.<br>Elle restera disponible même sans connexion.</p>
+      <p>Appuyez sur <strong>＋ Ajouter</strong> en bas, puis collez le lien d'une recette : la fiche se remplit toute seule.</p>
     </div>`;
     return;
   }
@@ -727,7 +826,10 @@ function ouvrirDetail(id) {
   document.getElementById('dialogue-detail').showModal();
 }
 
-document.getElementById('recherche').addEventListener('input', rendreListe);
+document.getElementById('recherche').addEventListener('input', () => {
+  rendreListe();
+  marquerOnglet(document.getElementById('recherche').value ? 'nav-recherche' : 'nav-recettes');
+});
 
 /* ==================== Import depuis un lien ==================== */
 async function importerDepuisLien() {
@@ -884,8 +986,53 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+
+/* ==================== Menu du bas ==================== */
+function marquerOnglet(actif) {
+  ['nav-recettes', 'nav-recherche', 'nav-plus'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-current', id === actif ? 'true' : 'false');
+  });
+}
+
+function allerA(destination) {
+  if (destination === 'recettes') {
+    filtreTag = null;
+    document.getElementById('recherche').value = '';
+    rendreListe();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    marquerOnglet('nav-recettes');
+  } else if (destination === 'recherche') {
+    const champ = document.getElementById('recherche');
+    champ.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    champ.focus();
+    marquerOnglet('nav-recherche');
+  }
+}
+
+// Le panneau « Plus » remet l'onglet actif quand on le referme
+document.getElementById('panneau-plus').addEventListener('close', () => {
+  marquerOnglet(document.getElementById('recherche').value ? 'nav-recherche' : 'nav-recettes');
+});
+document.getElementById('nav-plus').addEventListener('click', () => marquerOnglet('nav-plus'));
+
+async function afficherInfoStockage() {
+  const zone = document.getElementById('info-stockage');
+  const etat = await etatStockage();
+  if (!etat) {
+    zone.textContent = 'Votre navigateur ne fournit pas ces informations.';
+  } else {
+    zone.textContent = `${etat.recettes} recette(s) enregistrée(s) · ${etat.utilise} utilisés sur ${etat.quota} disponibles · stockage ${etat.persistant ? 'persistant (protégé de l\'effacement automatique)' : 'standard'}.`;
+  }
+  zone.hidden = false;
+}
+
 /* ==================== Bannière d'installation ==================== */
+/* Fonctionnalité secondaire : encapsulée pour qu'une API absente (iOS ancien)
+   ne puisse jamais interrompre le reste du script, notamment le démarrage. */
 let evenementInstall = null;
+let deplierBanniere = () => {}, reduireBanniere = () => {}, retirerInstallation = () => {}, majEspaceBas = () => {};
+try {
 const CLE_REDUITE = 'install-reduite';
 const CLE_REFUS = 'install-refuse-le';
 const DELAI_RAPPEL = 7 * 24 * 60 * 60 * 1000;
@@ -907,20 +1054,15 @@ function refusRecent() {
 }
 
 /* --- Mesure la hauteur réellement occupée en bas pour décaler le bouton flottant --- */
-function majEspaceBas() {
+/* Les encarts d'installation sont désormais positionnés au-dessus du menu du bas
+   par le CSS (var --h-menu) : aucune mesure JS n'est nécessaire. On expose
+   seulement la hauteur pour d'éventuels ajustements futurs. */
+majEspaceBas = function () {
+  const affiche = (el) => el && el.offsetParent !== null;
   const banniere = document.getElementById('banniere-install');
   const pastille = document.getElementById('pastille-install');
-  // offsetParent vaut null si l'élément n'est pas rendu : on mesure ce qui est
-  // réellement à l'écran plutôt que de se fier au seul attribut hidden.
-  const affiche = (el) => el && el.offsetParent !== null;
   const visible = affiche(banniere) ? banniere : (affiche(pastille) ? pastille : null);
-  if (!visible) {
-    document.body.classList.remove('avec-encart');
-    document.documentElement.style.setProperty('--hauteur-install', '0px');
-    return;
-  }
-  document.body.classList.add('avec-encart');
-  document.documentElement.style.setProperty('--hauteur-install', visible.offsetHeight + 'px');
+  document.documentElement.style.setProperty('--hauteur-install', (visible ? visible.offsetHeight : 0) + 'px');
 }
 
 function proposerInstallation(detail) {
@@ -931,7 +1073,7 @@ function proposerInstallation(detail) {
   else deplierBanniere();
 }
 
-function deplierBanniere() {
+deplierBanniere = function () {
   if (dejaInstallee()) return;
   document.getElementById('pastille-install').hidden = true;
   document.getElementById('banniere-install').hidden = false;
@@ -939,14 +1081,14 @@ function deplierBanniere() {
   requestAnimationFrame(majEspaceBas);
 }
 
-function reduireBanniere(memoriser = true) {
+reduireBanniere = function (memoriser = true) {
   document.getElementById('banniere-install').hidden = true;
   document.getElementById('pastille-install').hidden = false;
   if (memoriser) localStorage.setItem(CLE_REDUITE, '1');
   requestAnimationFrame(majEspaceBas);
 }
 
-function retirerInstallation() {
+retirerInstallation = function () {
   document.getElementById('banniere-install').hidden = true;
   document.getElementById('pastille-install').hidden = true;
   majEspaceBas();
@@ -985,9 +1127,15 @@ window.addEventListener('appinstalled', () => {
 });
 
 // Lancement en mode installé : on retire tout immédiatement
-window.matchMedia('(display-mode: standalone)').addEventListener('change', (e) => {
-  if (e.matches) { localStorage.setItem('app-installee', '1'); retirerInstallation(); }
-});
+(function surModeInstalle() {
+  const mq = window.matchMedia('(display-mode: standalone)');
+  const gerer = (e) => {
+    if (e.matches) { localStorage.setItem('app-installee', '1'); retirerInstallation(); }
+  };
+  // addEventListener sur MediaQueryList n'existe qu'à partir d'iOS 14
+  if (typeof mq.addEventListener === 'function') mq.addEventListener('change', gerer);
+  else if (typeof mq.addListener === 'function') mq.addListener(gerer);
+})();
 
 // La hauteur change si la bannière passe sur deux lignes (rotation, redimensionnement)
 window.addEventListener('resize', majEspaceBas);
@@ -1008,6 +1156,10 @@ if (dejaInstallee()) {
   retirerInstallation();
 }
 
+} catch (e) {
+  console.warn("Bannière d'installation indisponible sur ce navigateur :", e);
+}
+
 /* ==================== Toast ==================== */
 let minuterieToast = null;
 function toast(message) {
@@ -1020,10 +1172,14 @@ function toast(message) {
 
 /* ==================== Démarrage ==================== */
 (async function demarrer() {
-  bd = await ouvrirBD();
-  majReseau();
-  if (utilisateurCourant()) {
-    afficherApp();
+  try { majReseau(); } catch (e) { console.error(e); }
+  try {
+    await bdPrete();
+    if (utilisateurCourant()) await afficherApp();
+  } catch (e) {
+    console.error('Démarrage :', e);
+    const erreur = document.getElementById('erreur-auth');
+    if (erreur) erreur.textContent = e.message;
   }
 })();
 </script>
