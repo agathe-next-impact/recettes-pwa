@@ -359,30 +359,73 @@ async function tenter(cible, ua, delai = 12000) {
   }
 }
 
-async function telecharger(cible) {
-  const echecs = [];
-  for (const ua of [UA_NAVIGATEUR, UA_IDENTIFIE]) {
+/* Archive du Web : copie publique servie par archive.org. Ce n'est pas un
+   contournement du blocage du site — c'est une source distincte, archivée
+   légalement, qui contient le même balisage JSON-LD. Peut être un peu datée. */
+async function viaArchive(cible) {
+  const dispo = await fetch(
+    'https://archive.org/wayback/available?url=' + encodeURIComponent(cible),
+    { headers: { 'User-Agent': UA_IDENTIFIE } }
+  );
+  if (!dispo.ok) throw new Error('archive injoignable');
+  const info = await dispo.json();
+  const snap = info && info.archived_snapshots && info.archived_snapshots.closest;
+  if (!snap || !snap.available || !snap.url) throw new Error('aucune archive');
+  // Le suffixe id_ renvoie le HTML original, sans la barre d'outils d'archive.org
+  const brut = snap.url.replace(/\/(\d{14})\//, '/$1id_/');
+  const r = await fetch(brut, { headers: { 'User-Agent': UA_NAVIGATEUR } });
+  if (!r.ok) throw new Error(`archive statut ${r.status}`);
+  const html = (await r.text()).slice(0, 3_000_000);
+  return { html, archive: snap.timestamp || '' };
+}
+
+/* Proxies publics de lecture, utilisés en tout dernier recours. */
+async function viaProxy(cible) {
+  const passerelles = [
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(cible),
+    'https://r.jina.ai/' + cible
+  ];
+  for (const p of passerelles) {
     try {
-      return await tenter(cible, ua);
+      const r = await fetch(p, { headers: { 'User-Agent': UA_NAVIGATEUR, 'Accept': '*/*' } });
+      if (!r.ok) continue;
+      const t = (await r.text()).slice(0, 3_000_000);
+      if (t && t.length > 500) return t;
+    } catch { /* passerelle suivante */ }
+  }
+  throw new Error('proxies indisponibles');
+}
+
+async function telecharger(cible) {
+  const journal = [];
+
+  // 1. Accès direct, deux identités
+  for (const [nom, ua] of [['navigateur', UA_NAVIGATEUR], ['identifié', UA_IDENTIFIE]]) {
+    try {
+      return { html: await tenter(cible, ua), voie: 'direct/' + nom };
     } catch (e) {
-      echecs.push(e.name === 'AbortError' ? 'délai dépassé' : e.message);
+      journal.push(`direct/${nom} : ${e.name === 'AbortError' ? 'délai dépassé' : e.message}`);
     }
   }
-  // Dernier recours : proxy d'extraction (renvoie le contenu en texte/markdown)
+
+  // 2. Archive du Web
   try {
-    const r = await fetch('https://r.jina.ai/' + cible, {
-      headers: { 'Accept': 'text/plain', 'User-Agent': UA_NAVIGATEUR }
-    });
-    if (r.ok) {
-      const texte = (await r.text()).slice(0, 3_000_000);
-      if (texte && texte.length > 200) return texte;
-    }
-    echecs.push('proxy indisponible');
+    const { html, archive } = await viaArchive(cible);
+    return { html, voie: 'archive', archive };
   } catch (e) {
-    echecs.push('proxy : ' + e.message);
+    journal.push('archive : ' + e.message);
   }
-  const err = new Error(`Le site refuse la lecture automatique (${echecs.join(' ; ')}).`);
+
+  // 3. Proxies publics
+  try {
+    return { html: await viaProxy(cible), voie: 'proxy' };
+  } catch (e) {
+    journal.push(e.message);
+  }
+
+  const err = new Error("Ce site bloque la lecture depuis un serveur (protection anti-robot par adresse IP).");
   err.bloque = true;
+  err.journal = journal;
   throw err;
 }
 
@@ -401,7 +444,8 @@ module.exports = async (req, res) => {
     }
     await verifierHoteAutorise(url.hostname);
 
-    const html = await telecharger(url.href);
+    const { html, voie, archive } = await telecharger(url.href);
+    const marquer = (o) => Object.assign(o, { voie }, archive ? { archive } : {});
 
 
     // Tous les blocs <script type="application/ld+json">
@@ -410,24 +454,24 @@ module.exports = async (req, res) => {
       try {
         const donnees = JSON.parse(contenu.trim());
         const recette = trouverRecette(donnees);
-        if (recette) return res.status(200).json(normaliser(recette, url.href));
+        if (recette) return res.status(200).json(marquer(normaliser(recette, url.href)));
       } catch { /* bloc JSON-LD malformé : on passe au suivant */ }
     }
 
     // Repli 2 : microdonnées / hRecipe
     try {
       const parBalisage = extraireDuBalisage(html, url.href);
-      if (parBalisage) return res.status(200).json(parBalisage);
+      if (parBalisage) return res.status(200).json(marquer(parBalisage));
     } catch { /* balisage inexploitable : on tente Open Graph */ }
 
     // Repli 3 : heuristique par intitulés
     try {
       const parHeuristique = extraireParHeuristique(html, url.href);
-      if (parHeuristique) return res.status(200).json(parHeuristique);
+      if (parHeuristique) return res.status(200).json(marquer(parHeuristique));
     } catch { /* on tente Open Graph */ }
 
     const repli = replisOpenGraph(html, url.href);
-    if (repli) return res.status(200).json(repli);
+    if (repli) return res.status(200).json(marquer(repli));
 
     return res.status(404).json({
       ok: false,
@@ -439,6 +483,6 @@ module.exports = async (req, res) => {
       : (e.name === 'AbortError'
           ? 'Le site met trop de temps à répondre.'
           : 'Impossible de récupérer cette page.');
-    return res.status(502).json({ ok: false, erreur: message });
+    return res.status(502).json({ ok: false, erreur: message, detail: e.journal || undefined });
   }
 };

@@ -858,18 +858,22 @@ async function importerDepuisLien() {
     remplir('r-notes', donnees.notes);
 
     const n = `${donnees.ingredients.length} ingrédient(s), ${donnees.etapes.length} étape(s)`;
+    const via = donnees.voie === 'archive'
+      ? ` Lue depuis une copie archivée${donnees.archive ? ' du ' + donnees.archive.slice(6, 8) + '/' + donnees.archive.slice(4, 6) + '/' + donnees.archive.slice(0, 4) : ''} : la recette a pu changer depuis.`
+      : (donnees.voie === 'proxy' ? ' Lue via un service tiers.' : '');
     if (donnees.partiel) {
       statut.textContent = 'Ce site ne publie pas de recette structurée : seuls le titre et la description ont pu être récupérés. Complétez à la main.';
       statut.className = '';
     } else if (donnees.approximatif) {
-      statut.textContent = `Lecture approximative de la page : ${n}. Vérifiez et corrigez avant d'enregistrer.`;
+      statut.textContent = `Lecture approximative de la page : ${n}.${via} Vérifiez et corrigez avant d'enregistrer.`;
       statut.className = '';
     } else {
-      statut.textContent = `Recette récupérée : ${n}. Relisez puis enregistrez.`;
-      statut.className = 'succes';
+      statut.textContent = `Recette récupérée : ${n}.${via} Relisez puis enregistrez.`;
+      statut.className = via ? '' : 'succes';
     }
   } catch (e) {
-    statut.textContent = e.message || 'Impossible de récupérer cette page.';
+    statut.textContent = (e.message || 'Impossible de récupérer cette page.')
+      + " Utilisez le marque-page « Envoyer au carnet » (menu Plus), qui lit la page depuis votre navigateur.";
     statut.className = 'erreur';
   } finally {
     bouton.disabled = false;
