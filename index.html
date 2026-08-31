@@ -242,6 +242,11 @@ main.grille{padding-bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) 
 .liste-actions button .ico{font-size:1.15rem;width:24px;text-align:center}
 .liste-actions .separateur{height:1px;background:var(--ligne);margin:6px 24px}
 .liste-actions button.sortie{color:var(--tomate)}
+#bloc-marque-page{padding:4px 24px 14px;background:#F9F6EE;border-top:1px solid var(--ligne);border-bottom:1px solid var(--ligne)}
+#bloc-marque-page p{margin:10px 0}
+.aide-mp{font-size:.83rem;color:var(--encre-70);line-height:1.5}
+#lien-marque-page{cursor:grab;text-decoration:none}
+#code-marque-page{width:100%;font-family:ui-monospace,monospace;font-size:.72rem;padding:8px;border:1px solid var(--ligne);border-radius:8px;resize:vertical}
 #info-stockage{padding:4px 24px 16px;font-size:.8rem;color:var(--encre-70);line-height:1.5}
 
 /* Bannière d'installation */
@@ -390,6 +395,15 @@ main.grille{padding-bottom:calc(var(--h-menu) + env(safe-area-inset-bottom,0px) 
     <button onclick="exporterJSON()"><span class="ico" aria-hidden="true">⬇</span> Exporter mes recettes (JSON)</button>
     <button onclick="document.getElementById('import-fichier').click()"><span class="ico" aria-hidden="true">⬆</span> Importer un fichier JSON</button>
     <div class="separateur"></div>
+    <button onclick="afficherMarquePage()"><span class="ico" aria-hidden="true">🔖</span> Marque-page « Envoyer au carnet »</button>
+    <div id="bloc-marque-page" hidden>
+      <p class="aide-mp">Pour les sites qui bloquent la lecture automatique. Il s'exécute dans votre navigateur, sur la page ouverte : aucun blocage possible, et il fonctionne aussi sur les sites en JavaScript.</p>
+      <p class="aide-mp"><strong>Ordinateur :</strong> affichez la barre des favoris, puis glissez-y ce bouton.</p>
+      <p><a class="bouton" id="lien-marque-page" href="#" onclick="return false">🔖 Envoyer au carnet</a></p>
+      <p class="aide-mp"><strong>iPhone / Android :</strong> mettez cette page en favori, puis modifiez-le et remplacez son adresse par le code copié ci-dessous. Sur une page de recette, ouvrez ce favori.</p>
+      <p><button class="bouton secondaire" onclick="copierMarquePage()">Copier le code</button></p>
+      <textarea id="code-marque-page" rows="3" hidden readonly></textarea>
+    </div>
     <button onclick="afficherInfoStockage()"><span class="ico" aria-hidden="true">💾</span> État du stockage</button>
     <p id="info-stockage" hidden></p>
     <div class="separateur"></div>
@@ -643,6 +657,7 @@ async function afficherApp() {
   document.getElementById('nom-utilisateur').textContent = utilisateurCourant();
   demanderStockagePersistant();
   await chargerRecettes();
+  if (importEnAttente) { const d = importEnAttente; importEnAttente = null; appliquerImport(d); }
 }
 
 /* Demande au navigateur de ne pas évincer IndexedDB en cas de pression disque.
@@ -987,6 +1002,65 @@ if ('serviceWorker' in navigator) {
 }
 
 
+
+/* ==================== Réception depuis le marque-page ==================== */
+/* Les données arrivent dans le fragment (#import=…), qui n'est jamais envoyé au
+   serveur : tout reste sur l'appareil. Si l'utilisateur n'est pas connecté, on
+   met l'import en attente et on l'applique juste après la connexion. */
+function lireImportEntrant() {
+  const m = location.hash.match(/[#&]import=([^&]+)/);
+  if (!m) return null;
+  try {
+    const json = decodeURIComponent(escape(atob(decodeURIComponent(m[1]))));
+    const data = JSON.parse(json);
+    history.replaceState(null, '', location.pathname + location.search);
+    return (data && typeof data.titre === 'string') ? data : null;
+  } catch (e) {
+    console.error('Import marque-page :', e);
+    return null;
+  }
+}
+
+function appliquerImport(data) {
+  ouvrirEditeur();
+  const poser = (id, v) => { if (v) document.getElementById(id).value = v; };
+  poser('r-titre', data.titre);
+  poser('r-source', data.source);
+  poser('r-portions', data.portions);
+  poser('r-temps', data.temps);
+  poser('r-tags', (data.tags || []).join(', '));
+  poser('r-ingredients', (data.ingredients || []).join('\n'));
+  poser('r-etapes', (data.etapes || []).join('\n'));
+  poser('r-notes', data.notes);
+  const statut = document.getElementById('statut-import');
+  const n = `${(data.ingredients || []).length} ingrédient(s), ${(data.etapes || []).length} étape(s)`;
+  statut.textContent = `Reçu depuis le marque-page : ${n}. Relisez puis enregistrez.`;
+  statut.className = (data.ingredients || []).length ? 'succes' : '';
+}
+
+let importEnAttente = null;
+
+/* ==================== Marque-page : installation ==================== */
+const CODE_MARQUE_PAGE = "javascript:(function%20()%20%7B%20var%20APP%20%3D%20'https%3A%2F%2Frecettes-pwa-one.vercel.app%2F'%3B%20function%20txt(v)%20%7B%20if%20(v%20%3D%3D%20null)%20return%20''%3B%20var%20d%20%3D%20document.createElement('div')%3B%20d.innerHTML%20%3D%20String(v)%3B%20return%20(d.textContent%20%7C%7C%20'').replace(%2F%5Cs%2B%2Fg%2C%20'%20').trim()%3B%20%7D%20function%20duree(iso)%20%7B%20if%20(typeof%20iso%20!%3D%3D%20'string')%20return%20''%3B%20var%20m%20%3D%20iso.match(%2FP(%3F%3A(%5Cd%2B)D)%3FT%3F(%3F%3A(%5Cd%2B)H)%3F(%3F%3A(%5Cd%2B)M)%3F%2Fi)%3B%20if%20(!m)%20return%20''%3B%20var%20h%20%3D%20(%2B(m%5B1%5D%20%7C%7C%200))%20*%2024%20%2B%20(%2B(m%5B2%5D%20%7C%7C%200))%2C%20mn%20%3D%20%2B(m%5B3%5D%20%7C%7C%200)%3B%20if%20(h%20%26%26%20mn)%20return%20h%20%2B%20'%20h%20'%20%2B%20(mn%20%3C%2010%20%3F%20'0'%20%3A%20'')%20%2B%20mn%3B%20if%20(h)%20return%20h%20%2B%20'%20h'%3B%20return%20mn%20%3F%20mn%20%2B%20'%20min'%20%3A%20''%3B%20%7D%20function%20etapes(x%2C%20out)%20%7B%20out%20%3D%20out%20%7C%7C%20%5B%5D%3B%20if%20(!x)%20return%20out%3B%20(Array.isArray(x)%20%3F%20x%20%3A%20%5Bx%5D).forEach(function%20(i)%20%7B%20if%20(typeof%20i%20%3D%3D%3D%20'string')%20%7B%20var%20t%20%3D%20txt(i)%3B%20if%20(t)%20out.push(t)%3B%20%7D%20else%20if%20(i%20%26%26%20typeof%20i%20%3D%3D%3D%20'object')%20%7B%20var%20ty%20%3D%20i%5B'%40type'%5D%3B%20if%20(ty%20%3D%3D%3D%20'HowToSection'%20%7C%7C%20(Array.isArray(ty)%20%26%26%20ty.indexOf('HowToSection')%20%3E%20-1))%20etapes(i.itemListElement%2C%20out)%3B%20else%20%7B%20var%20s%20%3D%20txt(i.text%20%7C%7C%20i.name)%3B%20if%20(s)%20out.push(s)%3B%20%7D%20%7D%20%7D)%3B%20return%20out%3B%20%7D%20function%20chercher(n)%20%7B%20if%20(!n)%20return%20null%3B%20if%20(Array.isArray(n))%20%7B%20for%20(var%20i%20%3D%200%3B%20i%20%3C%20n.length%3B%20i%2B%2B)%20%7B%20var%20r%20%3D%20chercher(n%5Bi%5D)%3B%20if%20(r)%20return%20r%3B%20%7D%20return%20null%3B%20%7D%20if%20(typeof%20n%20!%3D%3D%20'object')%20return%20null%3B%20var%20t%20%3D%20n%5B'%40type'%5D%2C%20a%20%3D%20Array.isArray(t)%20%3F%20t%20%3A%20%5Bt%5D%3B%20for%20(var%20j%20%3D%200%3B%20j%20%3C%20a.length%3B%20j%2B%2B)%20if%20(typeof%20a%5Bj%5D%20%3D%3D%3D%20'string'%20%26%26%20a%5Bj%5D.toLowerCase()%20%3D%3D%3D%20'recipe')%20return%20n%3B%20return%20chercher(n%5B'%40graph'%5D)%20%7C%7C%20chercher(n.mainEntity)%3B%20%7D%20var%20rec%20%3D%20null%3B%20var%20blocs%20%3D%20document.querySelectorAll('script%5Btype%3D%22application%2Fld%2Bjson%22%5D')%3B%20for%20(var%20i%20%3D%200%3B%20i%20%3C%20blocs.length%20%26%26%20!rec%3B%20i%2B%2B)%20%7B%20try%20%7B%20rec%20%3D%20chercher(JSON.parse(blocs%5Bi%5D.textContent))%3B%20%7D%20catch%20(e)%20%7B%7D%20%7D%20var%20data%3B%20if%20(rec)%20%7B%20var%20y%20%3D%20rec.recipeYield%3B%20var%20ing%20%3D%20rec.recipeIngredient%20%7C%7C%20rec.ingredients%20%7C%7C%20%5B%5D%3B%20var%20cat%20%3D%20%5B%5D.concat(rec.recipeCategory%20%7C%7C%20%5B%5D%2C%20rec.keywords%20%7C%7C%20%5B%5D).join('%2C')%3B%20data%20%3D%20%7B%20titre%3A%20txt(rec.name)%2C%20portions%3A%20txt(Array.isArray(y)%20%3F%20y%5B0%5D%20%3A%20y)%2C%20temps%3A%20duree(rec.totalTime)%20%7C%7C%20%5Bduree(rec.prepTime)%2C%20duree(rec.cookTime)%5D.filter(Boolean).join('%20%2B%20')%2C%20tags%3A%20cat.split('%2C').map(function%20(s)%20%7B%20return%20s.trim().toLowerCase()%3B%20%7D).filter(Boolean).slice(0%2C%206)%2C%20ingredients%3A%20(Array.isArray(ing)%20%3F%20ing%20%3A%20%5Bing%5D).map(txt).filter(Boolean)%2C%20etapes%3A%20etapes(rec.recipeInstructions)%2C%20notes%3A%20txt(rec.description)%20%7D%3B%20%7D%20else%20%7B%20var%20sel%20%3D%20txt(window.getSelection%20%26%26%20String(window.getSelection()))%3B%20var%20lis%20%3D%20%5B%5D.map.call(document.querySelectorAll('%5Bitemprop%3D%22recipeIngredient%22%5D%2C%5Bitemprop%3D%22ingredients%22%5D%2C.ingredient%2C.wprm-recipe-ingredient')%2C%20function%20(e)%20%7B%20return%20txt(e.textContent)%3B%20%7D).filter(Boolean)%3B%20var%20ets%20%3D%20%5B%5D.map.call(document.querySelectorAll('%5Bitemprop%3D%22recipeInstructions%22%5D%20li%2C.instruction%2C.wprm-recipe-instruction')%2C%20function%20(e)%20%7B%20return%20txt(e.textContent)%3B%20%7D).filter(Boolean)%3B%20data%20%3D%20%7B%20titre%3A%20txt(document.querySelector('h1')%20%26%26%20document.querySelector('h1').textContent)%20%7C%7C%20document.title%2C%20portions%3A%20''%2C%20temps%3A%20''%2C%20tags%3A%20%5B%5D%2C%20ingredients%3A%20lis%2C%20etapes%3A%20ets.length%20%3F%20ets%20%3A%20(sel%20%3F%20sel.split(%2F%5Cn%2B%2F).filter(Boolean)%20%3A%20%5B%5D)%2C%20notes%3A%20sel%20%26%26%20!lis.length%20%26%26%20!ets.length%20%3F%20''%20%3A%20''%20%7D%3B%20if%20(!lis.length%20%26%26%20!ets.length%20%26%26%20sel)%20data.ingredients%20%3D%20sel.split(%2F%5Cn%2B%2F).filter(Boolean)%3B%20%7D%20data.source%20%3D%20location.href%3B%20data.methode%20%3D%20rec%20%3F%20'marque-page%20(json-ld)'%20%3A%20'marque-page%20(page)'%3B%20var%20charge%20%3D%20btoa(unescape(encodeURIComponent(JSON.stringify(data))))%3B%20window.open(APP%20%2B%20'%23import%3D'%20%2B%20encodeURIComponent(charge)%2C%20'_blank')%3B%20%7D)()%3B";
+
+function afficherMarquePage() {
+  const zone = document.getElementById('bloc-marque-page');
+  zone.hidden = !zone.hidden;
+  if (!zone.hidden) document.getElementById('lien-marque-page').setAttribute('href', CODE_MARQUE_PAGE);
+}
+
+async function copierMarquePage() {
+  try {
+    await navigator.clipboard.writeText(CODE_MARQUE_PAGE);
+    toast('Code copié — collez-le dans l\'adresse d\'un favori');
+  } catch {
+    const champ = document.getElementById('code-marque-page');
+    champ.hidden = false;
+    champ.value = CODE_MARQUE_PAGE;
+    champ.select();
+  }
+}
+
 /* ==================== Menu du bas ==================== */
 function marquerOnglet(actif) {
   ['nav-recettes', 'nav-recherche', 'nav-plus'].forEach((id) => {
@@ -1173,6 +1247,7 @@ function toast(message) {
 /* ==================== Démarrage ==================== */
 (async function demarrer() {
   try { majReseau(); } catch (e) { console.error(e); }
+  importEnAttente = lireImportEntrant();
   try {
     await bdPrete();
     if (utilisateurCourant()) await afficherApp();

@@ -321,7 +321,10 @@ async function verifierHoteAutorise(hostname) {
    3. un proxy d'extraction public en dernier recours. */
 
 const UA_NAVIGATEUR = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
-const UA_GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+/* Agent identifié : on annonce honnêtement qui nous sommes plutôt que d'usurper
+   l'identité de Googlebot. Beaucoup de blocages visent les agents génériques ou
+   vides ; un client nommé et joignable passe souvent, et reste loyal envers le site. */
+const UA_IDENTIFIE = 'CarnetRecettes/1.0 (+https://recettes-pwa-one.vercel.app; lecture ponctuelle déclenchée par un utilisateur)';
 
 function enTetes(ua, cible) {
   return {
@@ -358,7 +361,7 @@ async function tenter(cible, ua, delai = 12000) {
 
 async function telecharger(cible) {
   const echecs = [];
-  for (const ua of [UA_NAVIGATEUR, UA_GOOGLEBOT]) {
+  for (const ua of [UA_NAVIGATEUR, UA_IDENTIFIE]) {
     try {
       return await tenter(cible, ua);
     } catch (e) {
@@ -432,7 +435,7 @@ module.exports = async (req, res) => {
     });
   } catch (e) {
     const message = e.bloque
-      ? e.message + " Copiez les ingrédients et les étapes à la main."
+      ? e.message + " Utilisez le marque-page « Envoyer au carnet » (menu Plus) : il lit la page depuis votre navigateur, sans blocage possible."
       : (e.name === 'AbortError'
           ? 'Le site met trop de temps à répondre.'
           : 'Impossible de récupérer cette page.');
